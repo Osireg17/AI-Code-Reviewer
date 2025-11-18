@@ -1,0 +1,6 @@
+name: Code Quality
+
+# TODO: Configure to run on push and pull_request
+# TODO: Run Ruff linting
+# TODO: Run Black formatting check
+# TODO: Run mypy type checking

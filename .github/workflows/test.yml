@@ -1,0 +1,7 @@
+name: Tests
+
+# TODO: Configure to run on push and pull_request
+# TODO: Set up Python environment
+# TODO: Install dependencies
+# TODO: Run pytest with coverage
+# TODO: Upload coverage report

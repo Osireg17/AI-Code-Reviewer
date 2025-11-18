@@ -1,0 +1,6 @@
+# Pre-commit hooks configuration
+# TODO: Add ruff hook
+# TODO: Add black hook
+# TODO: Add trailing whitespace check
+# TODO: Add end-of-file fixer
+# TODO: Add check for large files

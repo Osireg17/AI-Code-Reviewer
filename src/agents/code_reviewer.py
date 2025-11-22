@@ -1,4 +1,4 @@
-"""Code review agent using Pydantic AI and Gemini."""
+"""Code review agent using Pydantic AI and OpenAI."""
 
 # TODO: Import logging
 # TODO: Import Agent and RunContext from pydantic_ai
@@ -16,7 +16,7 @@
 #   - Output format instructions (use tools, analyze files, create comments, provide summary)
 
 # TODO: Create code_review_agent instance:
-#   - Model: f"google:{settings.gemini_model}"
+#   - Model: f"openai:{settings.openai_model}"
 #   - deps_type=ReviewDependencies
 #   - result_type=CodeReviewResult
 #   - system_prompt=SYSTEM_PROMPT

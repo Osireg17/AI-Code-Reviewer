@@ -8,8 +8,8 @@
 #   - extra="ignore"
 #   - case_sensitive=False
 # TODO: Add fields for:
-#   - google_api_key: str (required)
-#   - gemini_model: str (default: "gemini-2.0-flash-exp")
+#   - openai_api_key: str (required)
+#   - openai_model: str (default: "gpt-4o")
 #   - github_token: str (required)
 #   - github_webhook_secret: str (required)
 #   - logfire_token: str | None (optional for observability)

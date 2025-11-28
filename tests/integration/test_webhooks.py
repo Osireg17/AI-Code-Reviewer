@@ -4,10 +4,8 @@ import hashlib
 import hmac
 import json
 
-import httpx
 import pytest
-
-from src.config.settings import settings
+from fastapi.testclient import TestClient
 
 
 def generate_signature(payload: dict, secret: str) -> str:
@@ -23,20 +21,6 @@ def generate_signature(payload: dict, secret: str) -> str:
     body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     return f"sha256={signature}"
-
-
-@pytest.fixture
-def webhook_url() -> str:
-    """Return the webhook URL for testing."""
-    return "http://127.0.0.1:8000/webhook/github"
-
-
-@pytest.fixture
-def webhook_secret() -> str:
-    """Return the webhook secret for testing."""
-    if not settings.github_webhook_secret:
-        pytest.skip("GITHUB_WEBHOOK_SECRET not set")
-    return settings.github_webhook_secret
 
 
 @pytest.fixture
@@ -76,7 +60,9 @@ def pr_opened_payload() -> dict:
     }
 
 
-def test_ping_event(webhook_url: str, webhook_secret: str, ping_payload: dict) -> None:
+def test_ping_event(
+    client: TestClient, webhook_url: str, webhook_secret: str, ping_payload: dict
+) -> None:
     """Test webhook handles ping events correctly."""
     signature = generate_signature(ping_payload, webhook_secret)
 
@@ -87,14 +73,14 @@ def test_ping_event(webhook_url: str, webhook_secret: str, ping_payload: dict) -
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=ping_payload, headers=headers)
+    response = client.post(webhook_url, json=ping_payload, headers=headers)
 
     assert response.status_code == 200
     assert response.json()["message"] == "pong"
 
 
 def test_pr_opened_event(
-    webhook_url: str, webhook_secret: str, pr_opened_payload: dict
+    client: TestClient, webhook_url: str, webhook_secret: str, pr_opened_payload: dict
 ) -> None:
     """Test webhook handles pull request opened events correctly."""
     signature = generate_signature(pr_opened_payload, webhook_secret)
@@ -106,7 +92,7 @@ def test_pr_opened_event(
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=pr_opened_payload, headers=headers)
+    response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -114,7 +100,9 @@ def test_pr_opened_event(
     assert data["status"] == "processing"
 
 
-def test_invalid_signature(webhook_url: str, ping_payload: dict) -> None:
+def test_invalid_signature(
+    client: TestClient, webhook_url: str, ping_payload: dict
+) -> None:
     """Test webhook rejects requests with invalid signatures."""
     headers = {
         "Content-Type": "application/json",
@@ -123,13 +111,15 @@ def test_invalid_signature(webhook_url: str, ping_payload: dict) -> None:
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=ping_payload, headers=headers)
+    response = client.post(webhook_url, json=ping_payload, headers=headers)
 
     assert response.status_code == 401
     assert "Invalid signature" in response.json()["detail"]
 
 
-def test_missing_signature(webhook_url: str, ping_payload: dict) -> None:
+def test_missing_signature(
+    client: TestClient, webhook_url: str, ping_payload: dict
+) -> None:
     """Test webhook rejects requests with missing signatures."""
     headers = {
         "Content-Type": "application/json",
@@ -137,14 +127,14 @@ def test_missing_signature(webhook_url: str, ping_payload: dict) -> None:
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=ping_payload, headers=headers)
+    response = client.post(webhook_url, json=ping_payload, headers=headers)
 
     assert response.status_code == 401
     assert "Missing X-Hub-Signature-256" in response.json()["detail"]
 
 
 def test_pr_ignored_event(
-    webhook_url: str, webhook_secret: str, pr_opened_payload: dict
+    client: TestClient, webhook_url: str, webhook_secret: str, pr_opened_payload: dict
 ) -> None:
     """Test webhook ignores non-processed PR events."""
     # Change action to something we don't process
@@ -158,14 +148,14 @@ def test_pr_ignored_event(
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=pr_opened_payload, headers=headers)
+    response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 
     assert response.status_code == 200
     assert "ignored" in response.json()["message"].lower()
 
 
 def test_unsupported_event(
-    webhook_url: str, webhook_secret: str, ping_payload: dict
+    client: TestClient, webhook_url: str, webhook_secret: str, ping_payload: dict
 ) -> None:
     """Test webhook handles unsupported event types."""
     signature = generate_signature(ping_payload, webhook_secret)
@@ -177,7 +167,7 @@ def test_unsupported_event(
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = httpx.post(webhook_url, json=ping_payload, headers=headers)
+    response = client.post(webhook_url, json=ping_payload, headers=headers)
 
     assert response.status_code == 200
     assert "not supported" in response.json()["message"].lower()

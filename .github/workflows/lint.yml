@@ -1,6 +1,42 @@
 name: Code Quality
 
-# TODO: Configure to run on push and pull_request
-# TODO: Run Ruff linting
-# TODO: Run Black formatting check
-# TODO: Run mypy type checking
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+
+      - name: Run Ruff linter
+        run: |
+          ruff check src/ tests/ --output-format=github
+
+      - name: Run Ruff formatter check
+        run: |
+          ruff format --check src/ tests/
+
+      - name: Run Black formatter check
+        run: |
+          black --check src/ tests/
+
+      - name: Run mypy type checking
+        run: |
+          mypy src/

@@ -21,12 +21,34 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="gpt-4o", description="OpenAI model to use")
 
     # GitHub Configuration
-    github_token: str | None = Field(default=None, description="GitHub personal access token")
+    github_token: str | None = Field(
+        default=None, description="GitHub personal access token (legacy, prefer GitHub App)"
+    )
     github_webhook_secret: str | None = Field(
         default=None, description="GitHub webhook secret for signature verification"
     )
 
-    # Observability (Optional)
+    # GitHub App Configuration
+    github_app_id: str | None = Field(
+        default=None, description="GitHub App ID"
+    )
+    github_app_client_id: str | None = Field(
+        default=None, description="GitHub App Client ID"
+    )
+    github_app_client_secret: str | None = Field(
+        default=None, description="GitHub App Client Secret"
+    )
+    github_app_installation_id: str | None = Field(
+        default=None, description="GitHub App Installation ID"
+    )
+    github_app_private_key_path: str | None = Field(
+        default=None, description="Path to GitHub App private key .pem file"
+    )
+    github_app_private_key: str | None = Field(
+        default=None, description="GitHub App private key content (alternative to file path)"
+    )
+
+    # Observability
     logfire_token: str | None = Field(
         default=None, description="Pydantic Logfire token for observability"
     )

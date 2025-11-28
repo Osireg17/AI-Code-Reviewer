@@ -23,7 +23,7 @@ jobs:
       OPENAI_MODEL: "gpt-4o"
       DEBUG: "True"
       LOG_LEVEL: "INFO"
-      ENVIRONMENT: "TESTING"
+      ENVIRONMENT: "DEVELOPMENT"
 
     steps:
       - name: Checkout code

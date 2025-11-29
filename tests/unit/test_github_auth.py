@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.backends import default_backend
 
 from src.services.github_auth import GitHubAppAuth
 
@@ -77,11 +77,6 @@ class TestPrivateKeyLoading:
         auth = GitHubAppAuth()
         assert auth.private_key == generate_test_rsa_key
         assert "BEGIN RSA PRIVATE KEY" in auth.private_key
-
-    def test_load_private_key_from_content(self, mock_settings_with_content, generate_test_rsa_key):
-        """Test loading private key from direct content."""
-        auth = GitHubAppAuth()
-        assert auth.private_key == generate_test_rsa_key
 
     def test_load_private_key_prefers_file(self, generate_test_rsa_key):
         """Test that file path is preferred over content."""

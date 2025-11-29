@@ -53,7 +53,7 @@ class GitHubAppAuth:
                 )
 
             # Check that key has multiple lines (a real key should have content between markers)
-            lines = key.split('\n')
+            lines = key.split("\n")
             if len(lines) < 3:  # Should have at least BEGIN, content, END
                 raise ValueError(
                     "GITHUB_APP_PRIVATE_KEY appears incomplete. "
@@ -151,7 +151,7 @@ class GitHubAppAuth:
                 expires_at_str.replace("Z", "+00:00")
             )
 
-            return self._installation_token # type: ignore
+            return self._installation_token  # type: ignore
 
     def _is_token_valid(self) -> bool:
         """Check if the cached installation token is still valid.

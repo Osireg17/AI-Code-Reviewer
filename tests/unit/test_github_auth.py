@@ -37,7 +37,7 @@ def mock_settings_with_content():
 def mock_settings_with_file():
     """Mock settings with private key as file path."""
     # Create a temporary file with the key
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as f:
         f.write(SAMPLE_PRIVATE_KEY)
         temp_path = f.name
 
@@ -68,7 +68,7 @@ class TestPrivateKeyLoading:
 
     def test_load_private_key_prefers_file(self):
         """Test that file path is preferred over content."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as f:
             f.write(SAMPLE_PRIVATE_KEY)
             temp_path = f.name
 
@@ -101,7 +101,9 @@ class TestPrivateKeyLoading:
         with patch("src.services.github_auth.settings") as mock:
             mock.github_app_id = "123456"
             mock.github_app_installation_id = "987654"
-            mock.github_app_private_key = "-----BEGIN RSA PRIVATE KEY-----"  # Incomplete
+            mock.github_app_private_key = (
+                "-----BEGIN RSA PRIVATE KEY-----"  # Incomplete
+            )
             mock.github_app_private_key_path = None
 
             with pytest.raises(ValueError, match="appears incomplete"):
@@ -129,7 +131,7 @@ class TestJWTGeneration:
 
         # Verify it's a valid JWT format
         assert isinstance(token, str)
-        assert token.count('.') == 2  # JWT has 3 parts
+        assert token.count(".") == 2  # JWT has 3 parts
 
         # Decode without verification to check payload
         decoded = jwt.decode(token, options={"verify_signature": False})
@@ -197,7 +199,9 @@ class TestInstallationToken:
             assert auth._token_expires_at is not None
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_cached(self, mock_settings_with_content):
+    async def test_get_installation_access_token_cached(
+        self, mock_settings_with_content
+    ):
         """Test that valid cached tokens are reused."""
         auth = GitHubAppAuth()
 
@@ -210,7 +214,9 @@ class TestInstallationToken:
         assert token == "cached_token"
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_force_refresh(self, mock_settings_with_content):
+    async def test_get_installation_access_token_force_refresh(
+        self, mock_settings_with_content
+    ):
         """Test forcing token refresh."""
         auth = GitHubAppAuth()
 
@@ -370,7 +376,7 @@ class TestPRReview:
                 {
                     "path": "src/file.py",
                     "line": 10,
-                    "body": "Consider using a better name"
+                    "body": "Consider using a better name",
                 }
             ]
 

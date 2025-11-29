@@ -39,10 +39,7 @@ async def validate_signature(
 
     # Compute the expected signature
     secret = settings.github_webhook_secret.encode("utf-8")
-    expected_signature = (
-        "sha256="
-        + hmac.new(secret, body, hashlib.sha256).hexdigest()
-    )
+    expected_signature = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
 
     # Compare signatures securely
     if not hmac.compare_digest(expected_signature, x_hub_signature_256):
@@ -90,9 +87,7 @@ async def github_webhook(
         pr_number = payload.get("pull_request", {}).get("number")
         repo_name = payload.get("repository", {}).get("full_name")
 
-        logger.info(
-            f"Received PR {action} event for PR #{pr_number} in {repo_name}"
-        )
+        logger.info(f"Received PR {action} event for PR #{pr_number} in {repo_name}")
 
         # Only process opened, reopened, and synchronize events
         if action in ["opened", "reopened", "synchronize"]:

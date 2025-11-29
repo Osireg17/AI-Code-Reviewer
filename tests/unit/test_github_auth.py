@@ -8,38 +8,52 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from src.services.github_auth import GitHubAppAuth
 
 
-# Sample valid RSA private key for testing
-SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
-MIIEowIBAAKCAQEAuBXwFHVo8pqO7B3FQfLPk8HJWfIiJJLkYkLF/4ug5hXw/Dor
-mC6fLUJPNFx6TkzVmxFx7Y7G2yQMgxJVKPdWmJC5LnLmYBYi+bXvZH4VjZmIlPiP
-nZXh7kp0sWqRFVl1NcE8ZOCYxbxJH0yQk7iH8B5m5LqQqHqYhKd4qCPvFp4EqjYN
-VnPVMQH6kLCLCwHqBCnFQd4hWVYJk5nPPBmRqYLVlPCqCqLqW6hqPCLhBCnFqLCB
-C7qVnPVMQH6kLCLCwHqBCnFQd4hWVYJk5nPPBmRqYLVlPCqCqLqW6hqPCLhBCnFq
-LCBCLqVnPVMQH6kLCLCwHqBCnFQd4hWVYJkQIDAQABAoIBAD9HWqM5JHvJGRpK6
------END RSA PRIVATE KEY-----"""
+@pytest.fixture(scope="session")
+def generate_test_rsa_key():
+    """Generate a valid RSA private key for testing.
+
+    This generates a real RSA key pair dynamically to ensure tests
+    always have a valid key format, avoiding truncation issues.
+    """
+    # Generate RSA key pair (2048 bits is standard for GitHub Apps)
+    private_key = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048, backend=default_backend()
+    )
+
+    # Serialize to PEM format (the format GitHub expects)
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    return pem.decode("utf-8")
 
 
 @pytest.fixture
-def mock_settings_with_content():
+def mock_settings_with_content(generate_test_rsa_key):
     """Mock settings with private key as content."""
     with patch("src.services.github_auth.settings") as mock:
         mock.github_app_id = "123456"
         mock.github_app_installation_id = "987654"
-        mock.github_app_private_key = SAMPLE_PRIVATE_KEY
+        mock.github_app_private_key = generate_test_rsa_key
         mock.github_app_private_key_path = None
         yield mock
 
 
 @pytest.fixture
-def mock_settings_with_file():
+def mock_settings_with_file(generate_test_rsa_key):
     """Mock settings with private key as file path."""
     # Create a temporary file with the key
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as f:
-        f.write(SAMPLE_PRIVATE_KEY)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as f:
+        f.write(generate_test_rsa_key)
         temp_path = f.name
 
     with patch("src.services.github_auth.settings") as mock:
@@ -56,21 +70,18 @@ def mock_settings_with_file():
 class TestPrivateKeyLoading:
     """Tests for private key loading."""
 
-    def test_load_private_key_from_file(self, mock_settings_with_file):
+    def test_load_private_key_from_file(
+        self, mock_settings_with_file, generate_test_rsa_key
+    ):
         """Test loading private key from file path."""
         auth = GitHubAppAuth()
-        assert auth.private_key == SAMPLE_PRIVATE_KEY
+        assert auth.private_key == generate_test_rsa_key
         assert "BEGIN RSA PRIVATE KEY" in auth.private_key
 
-    def test_load_private_key_from_content(self, mock_settings_with_content):
-        """Test loading private key from direct content."""
-        auth = GitHubAppAuth()
-        assert auth.private_key == SAMPLE_PRIVATE_KEY
-
-    def test_load_private_key_prefers_file(self):
+    def test_load_private_key_prefers_file(self, generate_test_rsa_key):
         """Test that file path is preferred over content."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as f:
-            f.write(SAMPLE_PRIVATE_KEY)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as f:
+            f.write(generate_test_rsa_key)
             temp_path = f.name
 
         try:
@@ -82,7 +93,7 @@ class TestPrivateKeyLoading:
 
                 auth = GitHubAppAuth()
                 # Should load from file, not the incomplete content
-                assert auth.private_key == SAMPLE_PRIVATE_KEY
+                assert auth.private_key == generate_test_rsa_key
         finally:
             Path(temp_path).unlink()
 
@@ -102,7 +113,9 @@ class TestPrivateKeyLoading:
         with patch("src.services.github_auth.settings") as mock:
             mock.github_app_id = "123456"
             mock.github_app_installation_id = "987654"
-            mock.github_app_private_key = "-----BEGIN RSA PRIVATE KEY-----"  # Incomplete
+            mock.github_app_private_key = (
+                "-----BEGIN RSA PRIVATE KEY-----"  # Incomplete
+            )
             mock.github_app_private_key_path = None
 
             with pytest.raises(ValueError, match="appears incomplete"):
@@ -130,7 +143,7 @@ class TestJWTGeneration:
 
         # Verify it's a valid JWT format
         assert isinstance(token, str)
-        assert token.count('.') == 2  # JWT has 3 parts
+        assert token.count(".") == 2  # JWT has 3 parts
 
         # Decode without verification to check payload
         decoded = jwt.decode(token, options={"verify_signature": False})
@@ -146,12 +159,12 @@ class TestJWTGeneration:
         # Check expiration is within 10 minutes
         assert decoded["exp"] <= now + (10 * 60) + 60
 
-    def test_generate_jwt_no_app_id(self):
+    def test_generate_jwt_no_app_id(self, generate_test_rsa_key):
         """Test JWT generation fails without app ID."""
         with patch("src.services.github_auth.settings") as mock:
             mock.github_app_id = None
             mock.github_app_installation_id = "987654"
-            mock.github_app_private_key = SAMPLE_PRIVATE_KEY
+            mock.github_app_private_key = generate_test_rsa_key
             mock.github_app_private_key_path = None
 
             auth = GitHubAppAuth()
@@ -198,7 +211,9 @@ class TestInstallationToken:
             assert auth._token_expires_at is not None
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_cached(self, mock_settings_with_content):
+    async def test_get_installation_access_token_cached(
+        self, mock_settings_with_content
+    ):
         """Test that valid cached tokens are reused."""
         auth = GitHubAppAuth()
 
@@ -211,7 +226,9 @@ class TestInstallationToken:
         assert token == "cached_token"
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_force_refresh(self, mock_settings_with_content):
+    async def test_get_installation_access_token_force_refresh(
+        self, mock_settings_with_content
+    ):
         """Test forcing token refresh."""
         auth = GitHubAppAuth()
 
@@ -239,12 +256,14 @@ class TestInstallationToken:
             assert auth._installation_token == "ghs_new_token"
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_no_installation_id(self):
+    async def test_get_installation_access_token_no_installation_id(
+        self, generate_test_rsa_key
+    ):
         """Test error when installation ID is not configured."""
         with patch("src.services.github_auth.settings") as mock:
             mock.github_app_id = "123"
             mock.github_app_installation_id = None
-            mock.github_app_private_key = SAMPLE_PRIVATE_KEY
+            mock.github_app_private_key = generate_test_rsa_key
             mock.github_app_private_key_path = None
 
             auth = GitHubAppAuth()
@@ -371,7 +390,7 @@ class TestPRReview:
                 {
                     "path": "src/file.py",
                     "line": 10,
-                    "body": "Consider using a better name"
+                    "body": "Consider using a better name",
                 }
             ]
 

@@ -17,35 +17,54 @@ class Settings(BaseSettings):
     )
 
     # OpenAI Configuration
-    openai_api_key: str | None = Field(default=None, description="OpenAI API key for AI models")
+    openai_api_key: str | None = Field(
+        default=None, description="OpenAI API key for AI models"
+    )
     openai_model: str = Field(default="gpt-4o", description="OpenAI model to use")
 
     # GitHub Configuration
+    # Note: GitHub Actions doesn't allow env var names starting with GITHUB_
+    # so we support both GITHUB_* and GH_* / *_TOKEN / WEBHOOK_SECRET variants
     github_token: str | None = Field(
-        default=None, description="GitHub personal access token (legacy, prefer GitHub App)"
+        default=None,
+        validation_alias="GH_TOKEN",
+        description="GitHub personal access token (legacy, prefer GitHub App)",
     )
     github_webhook_secret: str | None = Field(
-        default=None, description="GitHub webhook secret for signature verification"
+        default=None,
+        validation_alias="WEBHOOK_SECRET",
+        description="GitHub webhook secret for signature verification",
     )
 
     # GitHub App Configuration
+    # Support both GITHUB_APP_* (local) and APP_* (CI) env var names
     github_app_id: str | None = Field(
-        default=None, description="GitHub App ID"
+        default=None, validation_alias="APP_ID", description="GitHub App ID"
     )
     github_app_client_id: str | None = Field(
-        default=None, description="GitHub App Client ID"
+        default=None,
+        validation_alias="APP_CLIENT_ID",
+        description="GitHub App Client ID",
     )
     github_app_client_secret: str | None = Field(
-        default=None, description="GitHub App Client Secret"
+        default=None,
+        validation_alias="APP_CLIENT_SECRET",
+        description="GitHub App Client Secret",
     )
     github_app_installation_id: str | None = Field(
-        default=None, description="GitHub App Installation ID"
+        default=None,
+        validation_alias="APP_INSTALLATION_ID",
+        description="GitHub App Installation ID",
     )
     github_app_private_key_path: str | None = Field(
-        default=None, description="Path to GitHub App private key .pem file"
+        default=None,
+        validation_alias="APP_PRIVATE_KEY_PATH",
+        description="Path to GitHub App private key .pem file",
     )
     github_app_private_key: str | None = Field(
-        default=None, description="GitHub App private key content (alternative to file path)"
+        default=None,
+        validation_alias="APP_PRIVATE_KEY",
+        description="GitHub App private key content (alternative to file path)",
     )
 
     # Observability

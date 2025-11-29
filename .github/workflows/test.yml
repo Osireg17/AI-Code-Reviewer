@@ -15,15 +15,20 @@ jobs:
 
     # GLOBAL ENV VARS: Available to all steps in this job
     # Pydantic Settings will automatically pick these up.
+    # Note: Secret names AND env var names cannot start with GITHUB_ (reserved)
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      GITHUB_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
+      OPENAI_API_KEY: ${{ vars.OPENAI_API_KEY }}
+      GH_TOKEN: ${{ vars.GH_TOKEN }}
+      WEBHOOK_SECRET: ${{ vars.GH_WEBHOOK_SECRET }}
       LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
-      OPENAI_MODEL: "gpt-4o"
-      DEBUG: "True"
-      LOG_LEVEL: "INFO"
-      ENVIRONMENT: "DEVELOPMENT"
+      # GitHub App credentials
+      APP_ID: ${{ vars.APP_ID }}
+      APP_INSTALLATION_ID: ${{ vars.GH_APP_INSTALLATION_ID }}
+      APP_PRIVATE_KEY: ${{ vars.GH_APP_PRIVATE_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o' }}
+      DEBUG: ${{ vars.DEBUG || 'True' }}
+      LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+      ENVIRONMENT: ${{ vars.ENVIRONMENT || 'development' }}
 
     steps:
       - name: Checkout code

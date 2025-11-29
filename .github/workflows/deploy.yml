@@ -10,6 +10,21 @@ jobs:
     validate:
         runs-on: ubuntu-latest
 
+        # Note: Secret names AND env var names cannot start with GITHUB_ (reserved)
+        env:
+            OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            GH_TOKEN: ${{ secrets.GH_TOKEN }}
+            WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
+            LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
+            # GitHub App credentials
+            APP_ID: ${{ secrets.APP_ID }}
+            APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+            APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+            OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o' }}
+            DEBUG: ${{ vars.DEBUG || 'True' }}
+            LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+            ENVIRONMENT: ${{ vars.ENVIRONMENT || 'development' }}
+
         steps:
             - name: Checkout code
               uses: actions/checkout@v4

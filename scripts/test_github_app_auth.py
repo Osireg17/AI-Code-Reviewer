@@ -33,13 +33,17 @@ async def main() -> None:
         print("\n3. Testing authenticated client...")
         async with await github_app_auth.get_authenticated_client() as client:
             # Get repositories accessible to this installation
-            response = await client.get("https://api.github.com/installation/repositories")
+            response = await client.get(
+                "https://api.github.com/installation/repositories"
+            )
             if response.status_code == 200:
                 repo_data = response.json()
                 print("   ✅ Installation token is valid!")
                 print(f"   Total repositories: {repo_data['total_count']}")
-                if repo_data['repositories']:
-                    print(f"   Sample repo: {repo_data['repositories'][0]['full_name']}")
+                if repo_data["repositories"]:
+                    print(
+                        f"   Sample repo: {repo_data['repositories'][0]['full_name']}"
+                    )
             else:
                 print(f"   ❌ Failed to access repositories: {response.status_code}")
                 print(f"   Response: {response.text}")
@@ -61,6 +65,7 @@ async def main() -> None:
         print(f"\n❌ Error: {e}")
         print(f"   Type: {type(e).__name__}\n")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

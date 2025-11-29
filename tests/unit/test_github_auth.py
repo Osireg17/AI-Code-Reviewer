@@ -11,7 +11,6 @@ import pytest
 
 from src.services.github_auth import GitHubAppAuth
 
-
 # Sample valid RSA private key for testing
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAuBXwFHVo8pqO7B3FQfLPk8HJWfIiJJLkYkLF/4ug5hXw/Dor

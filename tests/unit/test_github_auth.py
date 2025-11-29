@@ -24,19 +24,17 @@ def generate_test_rsa_key():
     """
     # Generate RSA key pair (2048 bits is standard for GitHub Apps)
     private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
+        public_exponent=65537, key_size=2048, backend=default_backend()
     )
 
     # Serialize to PEM format (the format GitHub expects)
     pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     )
 
-    return pem.decode('utf-8')
+    return pem.decode("utf-8")
 
 
 @pytest.fixture
@@ -72,7 +70,9 @@ def mock_settings_with_file(generate_test_rsa_key):
 class TestPrivateKeyLoading:
     """Tests for private key loading."""
 
-    def test_load_private_key_from_file(self, mock_settings_with_file, generate_test_rsa_key):
+    def test_load_private_key_from_file(
+        self, mock_settings_with_file, generate_test_rsa_key
+    ):
         """Test loading private key from file path."""
         auth = GitHubAppAuth()
         assert auth.private_key == generate_test_rsa_key
@@ -256,7 +256,9 @@ class TestInstallationToken:
             assert auth._installation_token == "ghs_new_token"
 
     @pytest.mark.asyncio
-    async def test_get_installation_access_token_no_installation_id(self, generate_test_rsa_key):
+    async def test_get_installation_access_token_no_installation_id(
+        self, generate_test_rsa_key
+    ):
         """Test error when installation ID is not configured."""
         with patch("src.services.github_auth.settings") as mock:
             mock.github_app_id = "123"

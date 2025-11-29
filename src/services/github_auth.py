@@ -44,11 +44,22 @@ class GitHubAppAuth:
         if settings.github_app_private_key:
             # Validate it's a complete key
             key = settings.github_app_private_key.strip()
+
+            # Check for BEGIN and END markers
             if not (key.startswith("-----BEGIN") and key.endswith("-----")):
                 raise ValueError(
                     "GITHUB_APP_PRIVATE_KEY appears incomplete. "
                     "Ensure it includes the full key content with BEGIN/END markers."
                 )
+
+            # Check that key has multiple lines (a real key should have content between markers)
+            lines = key.split('\n')
+            if len(lines) < 3:  # Should have at least BEGIN, content, END
+                raise ValueError(
+                    "GITHUB_APP_PRIVATE_KEY appears incomplete. "
+                    "Ensure it includes the full key content with BEGIN/END markers."
+                )
+
             return key
 
         raise ValueError(

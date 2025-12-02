@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.0",
     "pyjwt[crypto]>=2.9.0",
+    "logfire[fastapi]>=0.1.0",
 ]
 
 [project.optional-dependencies]

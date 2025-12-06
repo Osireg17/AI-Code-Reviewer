@@ -1,59 +1,297 @@
 """GitHub interaction tools for the code review agent."""
 
-# TODO: Import logging, Any from typing
-# TODO: Import GithubException from github
-# TODO: Import RunContext from pydantic_ai
-# TODO: Import ReviewDependencies, FileDiff, PRContext from src.models
+import logging
+from typing import Any, Literal, cast
 
-# TODO: Create logger = logging.getLogger(__name__)
+from github import GithubException
+from pydantic_ai import RunContext
 
-# TODO: Implement async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any]:
-#   - Get repo using ctx.deps.github_client.get_repo(ctx.deps.repo_full_name)
-#   - Get PR using repo.get_pull(ctx.deps.pr_number)
-#   - Extract labels from pr.labels
-#   - Create PRContext model with all PR metadata
-#   - Return context.model_dump()
-#   - Handle GithubException and general exceptions
-#   - Log info message with PR details
+from src.models.dependencies import ReviewDependencies
+from src.models.github_types import FileDiff, PRContext
 
-# TODO: Implement async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
-#   - Get repo and PR
-#   - Get all files using pr.get_files()
-#   - Return list of file.filename for each file
-#   - Handle exceptions and return error list if needed
-#   - Log number of files found
+logger = logging.getLogger(__name__)
 
-# TODO: Implement async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> dict[str, Any]:
-#   - Get repo and PR
-#   - Iterate through pr.get_files() to find matching file_path
-#   - Create FileDiff model with file details
-#   - Return file_diff.model_dump()
-#   - Return error dict if file not found
-#   - Handle exceptions
 
-# TODO: Implement async def get_full_file(ctx: RunContext[ReviewDependencies], file_path: str, ref: str = "head") -> str:
-#   - Get repo and PR
-#   - Determine SHA based on ref ("head" = pr.head.sha, "base" = pr.base.sha)
-#   - Get file content using repo.get_contents(file_path, ref=sha)
-#   - Decode content to string
-#   - Handle directory case (return error)
-#   - Handle 404 (file doesn't exist at ref)
-#   - Handle UnicodeDecodeError (binary file)
-#   - Handle general exceptions
-#   - Return file content or error message
+async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any]:
+    """Fetch PR metadata and context.
 
-# TODO: Implement async def post_review_comment(ctx: RunContext[ReviewDependencies], file_path: str, line_number: int, comment_body: str) -> str:
-#   - Get repo and PR
-#   - Get latest commit from pr.get_commits()
-#   - Call pr.create_review_comment() with body, commit, path, line
-#   - Return success message
-#   - Handle exceptions (note: line must be in diff)
-#   - Log comment posting
+    Args:
+        ctx: Run context with ReviewDependencies
 
-# TODO: Implement async def post_summary_comment(ctx: RunContext[ReviewDependencies], summary: str, approval_status: str = "COMMENT") -> str:
-#   - Validate approval_status is in ["APPROVE", "REQUEST_CHANGES", "COMMENT"]
-#   - Get repo and PR
-#   - Call pr.create_review() with body=summary, event=approval_status
-#   - Return success message
-#   - Handle exceptions
-#   - Log review posting
+    Returns:
+        Dictionary with PR context data or error
+    """
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Extract PR data and create PRContext
+        context = PRContext(
+            number=pr.number,
+            title=pr.title,
+            description=pr.body or "",
+            author=pr.user.login,
+            files_changed=pr.changed_files,
+            additions=pr.additions,
+            deletions=pr.deletions,
+            commits=pr.commits,
+            labels=[label.name for label in pr.labels],
+            base_branch=pr.base.ref,
+            head_branch=pr.head.ref,
+        )
+
+        logger.info(f"Fetched PR context for #{pr_number} in {repo_full_name}")
+        return context.model_dump()
+
+    except GithubException as e:
+        logger.error(f"GitHub API error fetching PR context: {e}")
+        return {"error": f"GitHub API error: {e}"}
+    except Exception as e:
+        logger.error(f"Unexpected error fetching PR context: {e}")
+        return {"error": f"Unexpected error: {e}"}
+
+
+async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
+    """List all files changed in the PR.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+
+    Returns:
+        List of changed file paths or error list
+    """
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Get files
+        files = pr.get_files()
+        filenames = [file.filename for file in files]
+
+        logger.info(f"Found {len(filenames)} changed files in PR #{pr_number}")
+        return filenames
+
+    except Exception as e:
+        logger.error(f"Error listing changed files: {e}")
+        return [f"Error: {e}"]
+
+
+async def get_file_diff(
+    ctx: RunContext[ReviewDependencies], file_path: str
+) -> dict[str, Any]:
+    """Get the diff/patch for a specific file.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        file_path: Path to the file
+
+    Returns:
+        Dictionary with file diff data or error
+    """
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Find matching file
+        files = pr.get_files()
+        target_file = None
+        for file in files:
+            if file.filename == file_path:
+                target_file = file
+                break
+
+        # If not found
+        if target_file is None:
+            return {"error": f"File not found: {file_path}"}
+
+        # Create FileDiff model
+        # PyGithub returns status as str, cast to Literal type for FileDiff
+        file_diff = FileDiff(
+            filename=target_file.filename,
+            status=cast(
+                Literal["added", "modified", "removed", "renamed"], target_file.status
+            ),
+            additions=target_file.additions,
+            deletions=target_file.deletions,
+            changes=target_file.changes,
+            patch=target_file.patch or "",
+            previous_filename=target_file.previous_filename,
+        )
+
+        logger.info(
+            f"Retrieved diff for {file_path} "
+            f"({file_diff.status}, +{file_diff.additions}/-{file_diff.deletions})"
+        )
+        return file_diff.model_dump()
+
+    except GithubException as e:
+        logger.error(f"GitHub API error getting file diff: {e}")
+        return {"error": f"GitHub API error: {e}"}
+    except Exception as e:
+        logger.error(f"Unexpected error getting file diff: {e}")
+        return {"error": f"Unexpected error: {e}"}
+
+
+async def get_full_file(
+    ctx: RunContext[ReviewDependencies], file_path: str, ref: str = "head"
+) -> str:
+    """Get complete file content at head or base revision.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        file_path: Path to the file
+        ref: Reference to get file from ("head" or "base")
+
+    Returns:
+        File content as string or error message
+    """
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Determine SHA based on ref
+        if ref == "head":
+            sha = pr.head.sha
+        elif ref == "base":
+            sha = pr.base.sha
+        else:
+            return f"Error: Invalid ref '{ref}', must be 'head' or 'base'"
+
+        # Get file content
+        content = repo.get_contents(file_path, ref=sha)
+
+        # Handle directory case
+        if isinstance(content, list):  # Directory
+            return f"Error: {file_path} is a directory, not a file"
+
+        # Decode content
+        try:
+            file_content = content.decoded_content.decode("utf-8")
+            logger.info(
+                f"Retrieved full content of {file_path} at {ref} ({len(file_content)} bytes)"
+            )
+            return file_content
+        except UnicodeDecodeError:
+            return f"Error: {file_path} is a binary file"
+
+    except GithubException as e:
+        if e.status == 404:
+            return f"Error: File {file_path} not found at {ref}"
+        logger.error(f"GitHub API error getting full file: {e}")
+        return f"Error: GitHub API error: {e}"
+    except Exception as e:
+        logger.error(f"Unexpected error getting full file: {e}")
+        return f"Error: Unexpected error: {e}"
+
+
+async def post_review_comment(
+    ctx: RunContext[ReviewDependencies],
+    file_path: str,
+    line_number: int,
+    comment_body: str,
+) -> str:
+    """Post inline comment on specific line of code.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        file_path: Path to the file
+        line_number: Line number to comment on
+        comment_body: Comment text
+
+    Returns:
+        Success message or error message
+    """
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Get latest commit
+        commits = list(pr.get_commits())
+        latest_commit = commits[-1]  # Get most recent commit
+
+        # Create review comment
+        pr.create_review_comment(
+            body=comment_body, commit=latest_commit, path=file_path, line=line_number
+        )
+
+        logger.info(f"Posted review comment on {file_path}:{line_number}")
+        return f"Posted comment on {file_path}:{line_number}"
+
+    except GithubException as e:
+        logger.error(f"GitHub API error posting comment: {e}")
+        return f"Error: GitHub API error: {e}"
+    except Exception as e:
+        logger.error(f"Unexpected error posting comment: {e}")
+        return f"Error: Unexpected error: {e}"
+
+
+async def post_summary_comment(
+    ctx: RunContext[ReviewDependencies],
+    summary: str,
+    approval_status: str = "COMMENT",
+) -> str:
+    """Post overall review summary with approval status.
+
+    This makes the bot appear in the Reviewers section on GitHub!
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        summary: Review summary text
+        approval_status: "APPROVE", "REQUEST_CHANGES", or "COMMENT"
+
+    Returns:
+        Success message or error message
+    """
+    # Validate approval_status
+    valid_statuses = ["APPROVE", "REQUEST_CHANGES", "COMMENT"]
+    if approval_status not in valid_statuses:
+        return f"Error: Invalid approval_status '{approval_status}'. Must be one of {valid_statuses}"
+
+    try:
+        github_client = ctx.deps.github_client
+        repo_full_name = ctx.deps.repo_full_name
+        pr_number = ctx.deps.pr_number
+
+        # Get repo and PR
+        repo = github_client.get_repo(repo_full_name)
+        pr = repo.get_pull(pr_number)
+
+        # Create review
+        pr.create_review(body=summary, event=approval_status)
+
+        logger.info(
+            f"Posted review summary for PR #{pr_number} with status: {approval_status}"
+        )
+        return f"Posted review with status: {approval_status}"
+
+    except GithubException as e:
+        logger.error(f"GitHub API error posting review: {e}")
+        return f"Error: GitHub API error: {e}"
+    except Exception as e:
+        logger.error(f"Unexpected error posting review: {e}")
+        return f"Error: Unexpected error: {e}"

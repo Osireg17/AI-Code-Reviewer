@@ -5,9 +5,14 @@ import hmac
 import logging
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Header, HTTPException, Request, status
+from github import Github
 
+from src.agents.code_reviewer import code_review_agent, validate_review_result
 from src.config.settings import settings
+from src.models.dependencies import ReviewDependencies
+from src.services.github_auth import github_app_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
@@ -61,7 +66,7 @@ async def github_webhook(
     request: Request,
     x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
-) -> dict[str, str]:
+) -> dict[str, str | int]:
     """
     Handle GitHub webhook events.
 
@@ -97,12 +102,63 @@ async def github_webhook(
 
         # Only process opened, reopened, and synchronize events
         if action in ["opened", "reopened", "synchronize"]:
-            # TODO: Trigger PR review orchestration
             logger.info(f"Processing PR #{pr_number} for review")
-            return {
-                "message": f"PR #{pr_number} queued for review",
-                "status": "processing",
-            }
+
+            try:
+                # Get installation access token
+                installation_token = (
+                    await github_app_auth.get_installation_access_token()
+                )
+
+                # Create GitHub client with installation token
+                github_client = Github(installation_token)
+
+                # Create HTTP client for additional API calls if needed
+                async with httpx.AsyncClient() as http_client:
+                    # Create dependencies for the agent
+                    deps = ReviewDependencies(
+                        github_client=github_client,
+                        http_client=http_client,
+                        pr_number=pr_number,
+                        repo_full_name=repo_name,
+                    )
+
+                    # Run the code review agent
+                    logger.info(f"Starting AI code review for PR #{pr_number}")
+                    result = await code_review_agent.run(
+                        user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
+                        f"Analyze the changes and provide constructive feedback.",
+                        deps=deps,
+                    )
+
+                    # Validate and correct the result
+                    # Note: Pydantic AI returns the result directly, not in a .data attribute
+                    validated_result = validate_review_result(
+                        repo_full_name=repo_name,
+                        pr_number=pr_number,
+                        result=result.output,
+                    )
+
+                    logger.info(
+                        f"Review completed for PR #{pr_number}: "
+                        f"{validated_result.total_comments} comments, "
+                        f"recommendation: {validated_result.summary.recommendation}"
+                    )
+
+                    return {
+                        "message": f"PR #{pr_number} reviewed successfully",
+                        "status": "completed",
+                        "comments_posted": validated_result.total_comments,
+                        "recommendation": validated_result.summary.recommendation,
+                    }
+
+            except Exception as e:
+                logger.error(f"Error processing PR #{pr_number}: {e}", exc_info=True)
+                return {
+                    "message": f"Error reviewing PR #{pr_number}",
+                    "status": "error",
+                    "error": str(e),
+                }
         else:
             logger.info(f"Ignoring PR {action} event")
             return {"message": f"Event {action} ignored"}

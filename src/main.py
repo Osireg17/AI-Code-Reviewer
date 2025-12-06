@@ -4,23 +4,16 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api import webhooks
 from src.config.settings import settings
+from src.utils.logging import setup_observability
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Setup logging and observability
+setup_observability()
 logger = logging.getLogger(__name__)
-
-# Configure Logfire if token is provided
-if settings.logfire_token:
-    logfire.configure(token=settings.logfire_token)
 
 
 @asynccontextmanager
@@ -45,8 +38,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Instrument FastAPI with Logfire
+# Instrument FastAPI with Logfire if configured
 if settings.logfire_token:
+    import logfire
+
     logfire.instrument_fastapi(app)
 
 # Configure CORS

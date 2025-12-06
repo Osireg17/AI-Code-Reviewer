@@ -58,12 +58,16 @@ app.include_router(webhooks.router)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
+async def health_check() -> dict[str, str | bool]:
+    """Health check endpoint with configuration status."""
     return {
         "status": "healthy",
         "environment": settings.environment,
         "version": "0.1.0",
+        "github_app_configured": bool(settings.github_app_id),
+        "openai_configured": bool(settings.openai_api_key),
+        "logfire_enabled": bool(settings.logfire_token),
+        "webhook_secret_configured": bool(settings.github_webhook_secret),
     }
 
 

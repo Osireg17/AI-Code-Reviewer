@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from github import Github
 
 from src.agents.code_reviewer import code_review_agent, validate_review_result
@@ -16,6 +16,73 @@ from src.services.github_auth import github_app_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
+
+# Track in-progress reviews to prevent duplicates
+_active_reviews: set[str] = set()
+
+
+async def process_pr_review(repo_name: str, pr_number: int) -> None:
+    """Process PR review in the background.
+
+    Args:
+        repo_name: Repository full name (owner/repo)
+        pr_number: Pull request number
+    """
+    review_key = f"{repo_name}#{pr_number}"
+
+    # Check if already processing
+    if review_key in _active_reviews:
+        logger.warning(f"Review already in progress for {review_key}, skipping")
+        return
+
+    try:
+        # Mark as active
+        _active_reviews.add(review_key)
+        logger.info(f"Starting background review for {review_key}")
+
+        # Get installation access token
+        installation_token = await github_app_auth.get_installation_access_token()
+
+        # Create GitHub client with installation token
+        github_client = Github(installation_token)
+
+        # Create HTTP client for additional API calls
+        async with httpx.AsyncClient() as http_client:
+            # Create dependencies for the agent
+            deps = ReviewDependencies(
+                github_client=github_client,
+                http_client=http_client,
+                pr_number=pr_number,
+                repo_full_name=repo_name,
+            )
+
+            # Run the code review agent
+            logger.info(f"Running AI code review for PR #{pr_number}")
+            result = await code_review_agent.run(
+                user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
+                f"Analyze the changes and provide constructive feedback.",
+                deps=deps,
+            )
+
+            # Validate and correct the result
+            validated_result = validate_review_result(
+                repo_full_name=repo_name,
+                pr_number=pr_number,
+                result=result.output,
+            )
+
+            logger.info(
+                f"Review completed for {review_key}: "
+                f"{validated_result.total_comments} comments, "
+                f"recommendation: {validated_result.summary.recommendation}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error processing review for {review_key}: {e}", exc_info=True)
+
+    finally:
+        # Remove from active set
+        _active_reviews.discard(review_key)
 
 
 async def validate_signature(
@@ -63,6 +130,7 @@ async def validate_signature(
 
 @router.post("/github")
 async def github_webhook(
+    background_tasks: BackgroundTasks,
     request: Request,
     x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
@@ -102,63 +170,24 @@ async def github_webhook(
 
         # Only process opened, reopened, and synchronize events
         if action in ["opened", "reopened", "synchronize"]:
-            logger.info(f"Processing PR #{pr_number} for review")
+            review_key = f"{repo_name}#{pr_number}"
 
-            try:
-                # Get installation access token
-                installation_token = (
-                    await github_app_auth.get_installation_access_token()
-                )
-
-                # Create GitHub client with installation token
-                github_client = Github(installation_token)
-
-                # Create HTTP client for additional API calls if needed
-                async with httpx.AsyncClient() as http_client:
-                    # Create dependencies for the agent
-                    deps = ReviewDependencies(
-                        github_client=github_client,
-                        http_client=http_client,
-                        pr_number=pr_number,
-                        repo_full_name=repo_name,
-                    )
-
-                    # Run the code review agent
-                    logger.info(f"Starting AI code review for PR #{pr_number}")
-                    result = await code_review_agent.run(
-                        user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
-                        f"Analyze the changes and provide constructive feedback.",
-                        deps=deps,
-                    )
-
-                    # Validate and correct the result
-                    # Note: Pydantic AI returns the result directly, not in a .data attribute
-                    validated_result = validate_review_result(
-                        repo_full_name=repo_name,
-                        pr_number=pr_number,
-                        result=result.output,
-                    )
-
-                    logger.info(
-                        f"Review completed for PR #{pr_number}: "
-                        f"{validated_result.total_comments} comments, "
-                        f"recommendation: {validated_result.summary.recommendation}"
-                    )
-
-                    return {
-                        "message": f"PR #{pr_number} reviewed successfully",
-                        "status": "completed",
-                        "comments_posted": validated_result.total_comments,
-                        "recommendation": validated_result.summary.recommendation,
-                    }
-
-            except Exception as e:
-                logger.error(f"Error processing PR #{pr_number}: {e}", exc_info=True)
+            # Check if already processing (deduplication)
+            if review_key in _active_reviews:
+                logger.info(f"Review already in progress for {review_key}, ignoring duplicate")
                 return {
-                    "message": f"Error reviewing PR #{pr_number}",
-                    "status": "error",
-                    "error": str(e),
+                    "message": f"PR #{pr_number} review already in progress",
+                    "status": "duplicate",
                 }
+
+            # Add background task to process review
+            background_tasks.add_task(process_pr_review, repo_name, pr_number)
+
+            logger.info(f"Queued background review for PR #{pr_number}")
+            return {
+                "message": f"PR #{pr_number} review queued",
+                "status": "accepted",
+            }
         else:
             logger.info(f"Ignoring PR {action} event")
             return {"message": f"Event {action} ignored"}

@@ -151,7 +151,7 @@ class GitHubAppAuth:
                 expires_at_str.replace("Z", "+00:00")
             )
 
-            return self._installation_token  # type: ignore
+            return self._installation_token
 
     def _is_token_valid(self) -> bool:
         """Check if the cached installation token is still valid.
@@ -244,7 +244,8 @@ class GitHubAppAuth:
         async with await self.get_authenticated_client() as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
-            return response.json()
+            data: dict[str, Any] = response.json()
+            return data
 
 
 # Global instance

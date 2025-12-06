@@ -38,7 +38,13 @@ async def validate_signature(
     body = await request.body()
 
     # Compute the expected signature
-    secret = settings.github_webhook_secret.encode("utf-8")
+    webhook_secret = settings.github_webhook_secret
+    if not webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook secret not configured",
+        )
+    secret = webhook_secret.encode("utf-8")
     expected_signature = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
 
     # Compare signatures securely

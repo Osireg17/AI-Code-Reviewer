@@ -42,15 +42,20 @@ Review Workflow:
    - Use `get_file_diff()` to see what changed
    - Use `get_full_file()` if you need surrounding context
    - Analyze the changes thoroughly
-4. Create ReviewComment objects for each finding
-5. Generate a ReviewSummary with overall assessment
-6. Return a complete CodeReviewResult
+4. For each finding, **immediately post it** using `post_review_comment(file_path, line_number, comment_body)`
+5. After posting all inline comments, **post the summary** using `post_summary_comment(summary, approval_status)`
+6. Create ReviewComment objects for each finding you posted
+7. Generate a ReviewSummary with overall assessment
+8. Return a complete CodeReviewResult
+
+**CRITICAL**: You MUST use the `post_review_comment()` and `post_summary_comment()` tools to actually post your review to GitHub. Simply returning comments in the CodeReviewResult is NOT enough - you must actively post them!
 
 Output Requirements:
 - Each ReviewComment must have: file_path, line_number, comment_body, severity, category
 - Line numbers must correspond to lines visible in the diff (changed lines only)
 - ReviewSummary must include: overall_assessment, counts, recommendation, key_points
 - Recommendation: "approve" (no critical issues), "request_changes" (has critical issues), or "comment" (only suggestions)
+- Approval status for post_summary_comment: "APPROVE", "REQUEST_CHANGES", or "COMMENT"
 """
 
 # Set OpenAI API key as environment variable for Pydantic AI

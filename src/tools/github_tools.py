@@ -1,6 +1,7 @@
 """GitHub interaction tools for the code review agent."""
 
 import logging
+import re
 from typing import Any, Literal, cast
 
 from github import GithubException
@@ -204,6 +205,53 @@ async def get_full_file(
         return f"Error: Unexpected error: {e}"
 
 
+def _is_line_in_diff(patch: str | None, line_number: int) -> bool:
+    """Check if a line number exists in the diff patch.
+
+    Args:
+        patch: The diff patch string
+        line_number: The line number to check
+
+    Returns:
+        True if the line is in the diff, False otherwise
+    """
+    if not patch:
+        return False
+
+    # Simple parser
+    # Iterate through lines
+    lines = patch.split("\n")
+    current_new_line = 0
+
+    # Regex for hunk header: @@ -old_start,old_len +new_start,new_len @@
+    # Note: len is optional if it is 1
+    hunk_header_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+    in_hunk = False
+
+    for line in lines:
+        if line.startswith("@@"):
+            match = hunk_header_re.match(line)
+            if match:
+                current_new_line = int(match.group(1))
+                in_hunk = True
+                continue
+
+        if not in_hunk:
+            continue
+
+        if line.startswith("+") or line.startswith(" "):
+            # This line corresponds to current_new_line
+            if current_new_line == line_number:
+                return True
+            current_new_line += 1
+        elif line.startswith("-"):
+            # This line is in old file, doesn't advance new file line count
+            pass
+
+    return False
+
+
 async def post_review_comment(
     ctx: RunContext[ReviewDependencies],
     file_path: str,
@@ -229,6 +277,24 @@ async def post_review_comment(
         # Get repo and PR
         repo = github_client.get_repo(repo_full_name)
         pr = repo.get_pull(pr_number)
+
+        # Validate line number against diff
+        files = pr.get_files()
+        target_file = None
+        for file in files:
+            if file.filename == file_path:
+                target_file = file
+                break
+        
+        if not target_file:
+             return f"Error: File {file_path} not found in PR"
+             
+        if not _is_line_in_diff(target_file.patch, line_number):
+            return (
+                f"Error: Line {line_number} in {file_path} is not part of the diff. "
+                "You can only comment on changed lines or context lines visible in the diff. "
+                "Please check `get_file_diff` to find valid line numbers."
+            )
 
         # Get latest commit
         commits = list(pr.get_commits())

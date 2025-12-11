@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
-from github import Github
+from github import Auth, Github
 
 from src.agents.code_reviewer import code_review_agent, validate_review_result
 from src.config.settings import settings
@@ -43,8 +43,9 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
         # Get installation access token
         installation_token = await github_app_auth.get_installation_access_token()
 
-        # Create GitHub client with installation token
-        github_client = Github(installation_token)
+        # Create GitHub client with installation token using new Auth API
+        auth = Auth.Token(installation_token)
+        github_client = Github(auth=auth)
 
         # Create HTTP client for additional API calls
         async with httpx.AsyncClient() as http_client:
@@ -174,7 +175,9 @@ async def github_webhook(
 
             # Check if already processing (deduplication)
             if review_key in _active_reviews:
-                logger.info(f"Review already in progress for {review_key}, ignoring duplicate")
+                logger.info(
+                    f"Review already in progress for {review_key}, ignoring duplicate"
+                )
                 return {
                     "message": f"PR #{pr_number} review already in progress",
                     "status": "duplicate",

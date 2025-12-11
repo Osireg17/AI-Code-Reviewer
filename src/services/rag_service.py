@@ -36,6 +36,20 @@ class RAGService:
         try:
             # Initialize Pinecone client
             self.pc = Pinecone(api_key=settings.pinecone_api_key)
+
+            # Verify index exists
+            existing_indexes = [idx.name for idx in self.pc.list_indexes().indexes]
+            if settings.pinecone_index_name not in existing_indexes:
+                logger.error(
+                    f"Pinecone index '{settings.pinecone_index_name}' does not exist. "
+                    f"Available indexes: {existing_indexes}. "
+                    f"Run 'python scripts/setup_pinecone.py' to create it."
+                )
+                self.pc = None
+                self.index = None
+                self.embeddings = None
+                return
+
             self.index = self.pc.Index(settings.pinecone_index_name)
 
             # Initialize OpenAI embeddings

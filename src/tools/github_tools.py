@@ -285,10 +285,10 @@ async def post_review_comment(
             if file.filename == file_path:
                 target_file = file
                 break
-        
+
         if not target_file:
-             return f"Error: File {file_path} not found in PR"
-             
+            return f"Error: File {file_path} not found in PR"
+
         if not _is_line_in_diff(target_file.patch, line_number):
             return (
                 f"Error: Line {line_number} in {file_path} is not part of the diff. "

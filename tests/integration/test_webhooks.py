@@ -96,8 +96,8 @@ def test_pr_opened_event(
 
     assert response.status_code == 200
     data = response.json()
-    assert "PR #1 queued for review" in data["message"]
-    assert data["status"] == "processing"
+    assert "PR #1 review queued" in data["message"]
+    assert data["status"] == "accepted"
 
 
 def test_invalid_signature(

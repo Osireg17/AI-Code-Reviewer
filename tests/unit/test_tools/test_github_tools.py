@@ -358,7 +358,12 @@ class TestPostReviewComment:
         mock_repo = Mock()
         mock_pr = Mock()
         mock_commit = Mock()
+        mock_file = Mock()
+        mock_file.filename = "src/test.py"
+        # Patch starting at line 8, adding line 10
+        mock_file.patch = "@@ -8,3 +8,4 @@\n context line 8\n context line 9\n+new line 10\n context line 11"
 
+        mock_pr.get_files.return_value = [mock_file]
         mock_pr.get_commits.return_value = [mock_commit]
         mock_pr.create_review_comment = Mock()
 
@@ -379,7 +384,11 @@ class TestPostReviewComment:
         mock_repo = Mock()
         mock_pr = Mock()
         mock_commit = Mock()
+        mock_file = Mock()
+        mock_file.filename = "src/test.py"
+        mock_file.patch = "@@ -8,3 +8,4 @@\n context line 8\n context line 9\n+new line 10\n context line 11"
 
+        mock_pr.get_files.return_value = [mock_file]
         mock_pr.get_commits.return_value = [mock_commit]
         mock_pr.create_review_comment.side_effect = GithubException(
             422, "Line not in diff", None
@@ -389,7 +398,7 @@ class TestPostReviewComment:
         mock_repo.get_pull.return_value = mock_pr
 
         result = await post_review_comment(
-            mock_ctx, "src/test.py", 999, "Comment on non-diff line"
+            mock_ctx, "src/test.py", 10, "Comment on non-diff line"
         )
 
         assert "Error" in result

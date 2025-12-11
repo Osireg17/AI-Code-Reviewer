@@ -89,7 +89,7 @@ class Settings(BaseSettings):
         default=2, description="Maximum number of retries for API calls"
     )
     review_temperature: float = Field(
-        default=0.3, description="Temperature for AI model responses"
+        default=0.5, description="Temperature for AI model responses"
     )
 
     # Server Configuration
@@ -106,9 +106,7 @@ class Settings(BaseSettings):
     )
 
     # RAG Configuration
-    rag_enabled: bool = Field(
-        default=True, description="Enable RAG style guide search"
-    )
+    rag_enabled: bool = Field(default=True, description="Enable RAG style guide search")
     embedding_model: str = Field(
         default="text-embedding-3-small",
         description="OpenAI embedding model for RAG",
@@ -117,7 +115,7 @@ class Settings(BaseSettings):
         default=3, description="Number of similar documents to retrieve"
     )
     rag_min_similarity: float = Field(
-        default=0.5, description="Minimum similarity score for RAG results (0-1)"
+        default=0.4, description="Minimum similarity score for RAG results (0-1)"
     )
 
     @property

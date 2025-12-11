@@ -96,6 +96,30 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", description="Server host")
     port: int = Field(default=8000, description="Server port")
 
+    # Pinecone Configuration
+    pinecone_api_key: str | None = Field(
+        default=None, description="Pinecone API key for vector database"
+    )
+    pinecone_index_name: str = Field(
+        default="code-style-guides",
+        description="Pinecone index name for RAG knowledge base",
+    )
+
+    # RAG Configuration
+    rag_enabled: bool = Field(
+        default=True, description="Enable RAG style guide search"
+    )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model for RAG",
+    )
+    rag_top_k: int = Field(
+        default=3, description="Number of similar documents to retrieve"
+    )
+    rag_min_similarity: float = Field(
+        default=0.5, description="Minimum similarity score for RAG results (0-1)"
+    )
+
     @property
     def is_production(self) -> bool:
         """Check if running in production environment."""
@@ -119,6 +143,8 @@ if settings.is_production:
         missing.append("GITHUB_TOKEN")
     if not settings.github_webhook_secret:
         missing.append("GITHUB_WEBHOOK_SECRET")
+    if settings.rag_enabled and not settings.pinecone_api_key:
+        missing.append("PINECONE_API_KEY (required for RAG)")
     if missing:
         raise RuntimeError(
             "Missing required environment variables for production: "

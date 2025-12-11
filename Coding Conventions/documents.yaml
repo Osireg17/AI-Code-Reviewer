@@ -1,0 +1,156 @@
+# Configuration for coding convention documents
+# Each document will be indexed into Pinecone with the specified metadata
+
+# Python Documents
+- file_path: Python/Python_PEP8_TheStyleGuideForPythonCode.pdf
+  language: python
+  namespace: python
+  source: pep8
+  document_type: style_guide
+  url: https://peps.python.org/pep-0008/
+
+- file_path: Python/styleguide _ Style guides for Google-originated open-source projects.pdf
+  language: python
+  namespace: python
+  source: google-python
+  document_type: style_guide
+  url: https://google.github.io/styleguide/pyguide.html
+
+- file_path: Python/www-pydocstyle-org-en-6.2.1.pdf
+  language: python
+  namespace: python
+  source: pydocstyle
+  document_type: style_guide
+  url: http://www.pydocstyle.org/
+
+- file_path: Python/Python_Cheatsheet_whitepaper.pdf
+  language: python
+  namespace: python
+  source: python-cheatsheet
+  document_type: reference
+  url: null
+
+# JavaScript Documents
+- file_path: JavaScript/Airbnb-JavaScript-Coding-Convention.pdf
+  language: javascript
+  namespace: javascript
+  source: airbnb-js
+  document_type: style_guide
+  url: https://github.com/airbnb/javascript
+
+- file_path: JavaScript/Google JavaScript Style Guide.pdf
+  language: javascript
+  namespace: javascript
+  source: google-js
+  document_type: style_guide
+  url: https://google.github.io/styleguide/jsguide.html
+
+- file_path: JavaScript/README.md
+  language: javascript
+  namespace: javascript
+  source: javascript-readme
+  document_type: reference
+  url: null
+
+# TypeScript Documents
+- file_path: TypeScript/Google TypeScript Style Guide.pdf
+  language: typescript
+  namespace: typescript
+  source: google-typescript
+  document_type: style_guide
+  url: https://google.github.io/styleguide/tsguide.html
+
+- file_path: TypeScript/books-library.net-10121904Qa5D8.pdf
+  language: typescript
+  namespace: typescript
+  source: typescript-book
+  document_type: reference
+  url: null
+
+# Go Documents
+- file_path: Go/Effective Go - The Go Programming Language.pdf
+  language: go
+  namespace: go
+  source: effective-go
+  document_type: best_practices
+  url: https://go.dev/doc/effective_go
+
+- file_path: Go/styleguide _ Style guides for Google-originated open-source projects.pdf
+  language: go
+  namespace: go
+  source: google-go
+  document_type: style_guide
+  url: https://google.github.io/styleguide/go/
+
+- file_path: Go/Go Style Best Practices.pdf
+  language: go
+  namespace: go
+  source: go-best-practices
+  document_type: best_practices
+  url: https://google.github.io/styleguide/go/best-practices
+
+- file_path: Go/Go Style Decisions.pdf
+  language: go
+  namespace: go
+  source: go-decisions
+  document_type: style_guide
+  url: https://google.github.io/styleguide/go/decisions
+
+- file_path: Go/Uber-go-style-guide.md
+  language: go
+  namespace: go
+  source: uber-go
+  document_type: style_guide
+  url: https://github.com/uber-go/guide/blob/master/style.md
+
+# Java Documents
+- file_path: Java/Google Java Style Guide.pdf
+  language: java
+  namespace: java
+  source: google-java
+  document_type: style_guide
+  url: https://google.github.io/styleguide/javaguide.html
+
+- file_path: Java/Effective Java (2017, Addison-Wesley).pdf
+  language: java
+  namespace: java
+  source: effective-java
+  document_type: best_practices
+  url: null
+
+- file_path: Java/codeconventions.pdf
+  language: java
+  namespace: java
+  source: sun-java-conventions
+  document_type: style_guide
+  url: https://www.oracle.com/java/technologies/javase/codeconventions-contents.html
+
+# C++ Documents
+- file_path: C++/Google C++ Style Guide.pdf
+  language: cpp
+  namespace: cpp
+  source: google-cpp
+  document_type: style_guide
+  url: https://google.github.io/styleguide/cppguide.html
+
+# Cross-Language Documents (Security, Design Patterns, Clean Code)
+- file_path: Cross-Language/OWASP_SCP_Quick_Reference_Guide_v21.pdf
+  language: cross-language
+  namespace: cross-language
+  source: owasp-security
+  document_type: security
+  url: https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/
+
+- file_path: Cross-Language/Clean-Code-A-Handbook-of-Agile-Software-Craftsmanship.pdf
+  language: cross-language
+  namespace: cross-language
+  source: clean-code
+  document_type: best_practices
+  url: null
+
+- file_path: Cross-Language/Design-Patterns-Elements-of-Reusable-Object-Oriented-Software.pdf
+  language: cross-language
+  namespace: cross-language
+  source: design-patterns
+  document_type: best_practices
+  url: null

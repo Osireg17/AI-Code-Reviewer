@@ -248,5 +248,22 @@ class GitHubAppAuth:
             return data
 
 
-# Global instance
-github_app_auth = GitHubAppAuth()
+# Global instance (lazy initialization to avoid import-time errors in tests)
+_github_app_auth_instance: GitHubAppAuth | None = None
+
+
+def get_github_app_auth() -> GitHubAppAuth:
+    """Get or create the global GitHubAppAuth instance.
+
+    This uses lazy initialization to avoid requiring credentials at import time.
+
+    Returns:
+        The global GitHubAppAuth instance
+
+    Raises:
+        ValueError: If GitHub App credentials are not configured
+    """
+    global _github_app_auth_instance
+    if _github_app_auth_instance is None:
+        _github_app_auth_instance = GitHubAppAuth()
+    return _github_app_auth_instance

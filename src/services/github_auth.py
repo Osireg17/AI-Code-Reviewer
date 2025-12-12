@@ -92,14 +92,11 @@ class GitHubAppAuth:
             "iss": self.app_id,  # Issuer (GitHub App ID)
         }
 
-        # Generate JWT signed with RS256
-        token = jwt.encode(
+        return jwt.encode(
             payload,
             self.private_key,
             algorithm="RS256",
         )
-
-        return token
 
     async def get_installation_access_token(self, force_refresh: bool = False) -> str:
         """Get an installation access token.
@@ -122,7 +119,8 @@ class GitHubAppAuth:
 
         # Return cached token if still valid
         if not force_refresh and self._is_token_valid():
-            return self._installation_token  # type: ignore
+            assert self._installation_token is not None
+            return self._installation_token
 
         # Generate new JWT
         jwt_token = self.generate_jwt()
@@ -151,6 +149,7 @@ class GitHubAppAuth:
                 expires_at_str.replace("Z", "+00:00")
             )
 
+            assert self._installation_token is not None
             return self._installation_token
 
     def _is_token_valid(self) -> bool:
@@ -248,5 +247,30 @@ class GitHubAppAuth:
             return data
 
 
-# Global instance
-github_app_auth = GitHubAppAuth()
+_github_app_auth: GitHubAppAuth | None = None
+
+
+def get_github_app_auth() -> GitHubAppAuth:
+    """Get the GitHub App authentication instance.
+
+    Returns:
+        GitHubAppAuth: The singleton instance
+
+    Raises:
+        ValueError: If GitHub App credentials are not configured
+    """
+    global _github_app_auth
+    if _github_app_auth is None:
+        _github_app_auth = GitHubAppAuth()
+    return _github_app_auth
+
+
+class _GitHubAppAuthProxy:
+    """Proxy that delays GitHubAppAuth instantiation until first use."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Lazily get the auth instance and return the requested attribute."""
+        return getattr(get_github_app_auth(), name)
+
+
+github_app_auth = _GitHubAppAuthProxy()

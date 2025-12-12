@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]
 
     # GLOBAL ENV VARS: Available to all steps in this job
     # Pydantic Settings will automatically pick these up.
@@ -21,10 +21,10 @@ jobs:
       GH_TOKEN: ${{ vars.GH_TOKEN }}
       WEBHOOK_SECRET: ${{ vars.GH_WEBHOOK_SECRET }}
       LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
-      # GitHub App credentials
-      APP_ID: ${{ vars.APP_ID }}
+      # GitHub App credentials (use secrets for sensitive data)
+      APP_ID: ${{ vars.GH_APP_INSTALLATION_ID }}
       APP_INSTALLATION_ID: ${{ vars.GH_APP_INSTALLATION_ID }}
-      APP_PRIVATE_KEY: ${{ vars.GH_APP_PRIVATE_KEY }}
+      APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o' }}
       DEBUG: ${{ vars.DEBUG || 'True' }}
       LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}

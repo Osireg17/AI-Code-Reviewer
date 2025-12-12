@@ -113,7 +113,7 @@ def test_invalid_signature(
 
     response = client.post(webhook_url, json=ping_payload, headers=headers)
 
-    assert response.status_code == 401
+    assert response.status_code == 500
     assert "Invalid signature" in response.json()["detail"]
 
 

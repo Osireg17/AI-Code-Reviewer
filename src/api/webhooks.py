@@ -12,7 +12,7 @@ from github import Auth, Github
 from src.agents.code_reviewer import code_review_agent, validate_review_result
 from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
-from src.services.github_auth import get_github_app_auth
+from src.services.github_auth import github_app_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
@@ -41,8 +41,7 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
         logger.info(f"Starting background review for {review_key}")
 
         # Get installation access token
-        github_auth = get_github_app_auth()
-        installation_token = await github_auth.get_installation_access_token()
+        installation_token = await github_app_auth.get_installation_access_token()
 
         # Create GitHub client with installation token using new Auth API
         auth = Auth.Token(installation_token)

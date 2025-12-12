@@ -1,6 +1,7 @@
 """RAG service for retrieving coding style guides using Pinecone + LangChain."""
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from langchain_openai import OpenAIEmbeddings
@@ -52,10 +53,16 @@ class RAGService:
 
             self.index = self.pc.Index(settings.pinecone_index_name)
 
-            # Initialize OpenAI embeddings
+            api_key_callable: Callable[[], str] | None = None
+            if settings.openai_api_key:
+
+                def api_key_callable() -> str:
+                    assert settings.openai_api_key is not None
+                    return settings.openai_api_key
+
             self.embeddings = OpenAIEmbeddings(
                 model=settings.embedding_model,
-                openai_api_key=settings.openai_api_key,
+                api_key=api_key_callable,
             )
 
             logger.info(
@@ -101,7 +108,7 @@ class RAGService:
 
         try:
             # Create vector store with namespace filtering
-            namespace = language if language else None
+            namespace = language or None
 
             vector_store = PineconeVectorStore(
                 index=self.index,

@@ -101,7 +101,7 @@ def test_pr_opened_event(
 
 
 def test_invalid_signature(
-    client: TestClient, webhook_url: str, ping_payload: dict
+    client: TestClient, webhook_url: str, webhook_secret: str, ping_payload: dict
 ) -> None:
     """Test webhook rejects requests with invalid signatures."""
     headers = {
@@ -113,7 +113,7 @@ def test_invalid_signature(
 
     response = client.post(webhook_url, json=ping_payload, headers=headers)
 
-    assert response.status_code == 500
+    assert response.status_code == 401
     assert "Invalid signature" in response.json()["detail"]
 
 

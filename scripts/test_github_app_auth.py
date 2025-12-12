@@ -8,7 +8,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.services.github_auth import get_github_app_auth
+from src.services.github_auth import github_app_auth
 
 
 async def main() -> None:
@@ -18,23 +18,20 @@ async def main() -> None:
     print("=" * 70)
 
     try:
-        # Get the auth instance
-        github_auth = get_github_app_auth()
-
         # Test 1: Generate JWT
         print("\n1. Generating JWT...")
-        jwt_token = github_auth.generate_jwt()
+        jwt_token = github_app_auth.generate_jwt()
         print(f"   ✅ JWT generated: {jwt_token[:50]}...")
 
         # Test 2: Get installation access token
         print("\n2. Getting installation access token...")
-        access_token = await github_auth.get_installation_access_token()
+        access_token = await github_app_auth.get_installation_access_token()
         print(f"   ✅ Access token obtained: {access_token[:20]}...")
-        print(f"   Token expires at: {github_auth._token_expires_at}")
+        print(f"   Token expires at: {github_app_auth._token_expires_at}")
 
         # Test 3: Test authenticated client
         print("\n3. Testing authenticated client...")
-        async with await github_auth.get_authenticated_client() as client:
+        async with await github_app_auth.get_authenticated_client() as client:
             # Get repositories accessible to this installation
             response = await client.get(
                 "https://api.github.com/installation/repositories"

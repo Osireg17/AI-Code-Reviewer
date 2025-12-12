@@ -12,18 +12,26 @@ from src.tools import github_tools, rag_tools
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Staff Engineer reviewing PRs. Focus: security > performance > correctness > style.
+SYSTEM_PROMPT = """Staff Engineer reviewing PRs. Focus: correctness > style > performance > security.
 
 Severity: [critical] security/bugs, [warning] perf/anti-patterns, [suggestion] style.
 
 Order (strict):
 1. fetch_pr_context() + list_changed_files()
 2. Per file: get_file_diff() → analyze → post_review_comment() (verify line in diff!)
-3. search_style_guides(language, query) when needed (not every line)
-4. get_full_file() only if diff insufficient
-5. post_summary_comment() LAST
+3. get_full_file() only if diff insufficient
+4. search_style_guides (query, language) as needed
+5. provide comments with citations from RAG results
+6. post_summary_comment() LAST
 
-Comments: Brief, code-focused, cite sources. No fluff.
+RAG Tool Usage (search_style_guides):
+- Call BEFORE reviewing each file to get language-specific best practices
+- Use for: naming conventions, design patterns, security practices, idioms
+- Example: search_style_guides(query="exception handling best practices", language="java")
+- Example: search_style_guides(query="async/await patterns", language="javascript")
+- Cite sources in comments when using RAG results (e.g., "Per [Source]...")
+
+Comments: Brief, code-focused, cite sources. No fluff. More question based as you are helping a junior dev learn.
 """
 
 # Set OpenAI API key as environment variable for Pydantic AI
@@ -38,9 +46,6 @@ code_review_agent = Agent(
     system_prompt=SYSTEM_PROMPT,
     retries=settings.max_retries,
 )
-
-# Register all GitHub tools with decorator syntax
-
 
 @code_review_agent.tool
 async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict:
@@ -101,7 +106,27 @@ async def search_style_guides(
     language: str | None = None,
     top_k: int = 3,
 ) -> dict:
-    """Search coding style guides and best practices."""
+    """Search coding style guides and best practices for a specific language.
+
+    Use this tool to find authoritative guidance on:
+    - Naming conventions (variables, functions, classes)
+    - Design patterns and idioms
+    - Security best practices
+    - Error handling patterns
+    - Code organization and structure
+    - Language-specific anti-patterns to avoid
+
+    Args:
+        query: Natural language question (e.g., "exception handling patterns")
+        language: Programming language (e.g., "python", "java", "javascript")
+        top_k: Number of results (default: 3)
+
+    Returns:
+        Dict with results array containing style guide excerpts with sources
+
+    Example usage:
+        search_style_guides(query="naming conventions for constants", language="java")
+    """
     return await rag_tools.search_style_guides(ctx, query, language, top_k)
 
 

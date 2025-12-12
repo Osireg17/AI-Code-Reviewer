@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 from github import Github
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
 
 
 class ReviewDependencies(BaseModel):
@@ -18,7 +18,9 @@ class ReviewDependencies(BaseModel):
     http_client: httpx.AsyncClient
     pr_number: int
     repo_full_name: str
-    _cache: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    # Private cache for tool results (not serialized)
+    _cache: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

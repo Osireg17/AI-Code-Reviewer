@@ -47,6 +47,7 @@ code_review_agent = Agent(
     retries=settings.max_retries,
 )
 
+
 @code_review_agent.tool
 async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict:
     """Fetch PR metadata and context."""

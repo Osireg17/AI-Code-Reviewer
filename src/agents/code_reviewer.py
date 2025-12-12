@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import cast
 
 from pydantic_ai import Agent, RunContext
 
@@ -24,24 +25,35 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 
 ### **Review Workflow (follow in strict order)**
 
-1. **Initialize context**
-   * Call `fetch_pr_context()`
-   * Call `list_changed_files()`
+**IMPORTANT: Tools marked with 🔄 are cached. Do NOT call them more than once.**
+
+1. **Initialize context** (call these ONCE ONLY)
+   * 🔄 Call `fetch_pr_context()` - PR metadata is cached
+   * 🔄 Call `list_changed_files()` - File list is cached
 
 2. **File-level review** (for each changed file):
-   a. Call `get_file_diff()`
-   b. Call `search_style_guides()` to fetch language-specific best practices
+   a. Call `get_file_diff(file_path)` to get the diff
+   b. Call `search_style_guides(query, language)` to fetch relevant best practices
    c. Analyze the diff using both local reasoning + RAG insights
-   d. For every issue found, call `post_review_comment()`
+   d. For every issue found, call `post_review_comment(file_path, line_number, comment_body)`
       * Keep comments short and code-focused
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
 
-3. **Full-file inspection**
+3. **Full-file inspection** (optional)
    * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues.
 
-4. **Summary**
+4. **Summary** (call ONCE at the end)
    * Call `post_summary_comment()` **after** all inline comments.
+
+---
+
+### **Efficiency Guidelines**
+
+* **DO NOT re-fetch PR context or file lists** - they are cached automatically
+* **DO call `search_style_guides()` per file/topic** - queries should be specific to what you're reviewing
+* **DO analyze files sequentially** - review one file completely before moving to the next
+* **DO batch your thinking** - avoid calling tools just to "check" something you already have
 
 ---
 
@@ -83,20 +95,53 @@ code_review_agent = Agent(
 
 @code_review_agent.tool
 async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict:
-    """Fetch PR metadata and context."""
-    return await github_tools.fetch_pr_context(ctx)
+    """Fetch PR metadata and context.
+
+    This result is cached to avoid redundant API calls.
+    """
+    cache_key = "pr_context"
+    if cache_key in ctx.deps._cache:
+        logger.debug(f"Returning cached PR context for PR #{ctx.deps.pr_number}")
+        return cast(dict, ctx.deps._cache[cache_key])
+
+    result = await github_tools.fetch_pr_context(ctx)
+    ctx.deps._cache[cache_key] = result
+    logger.debug(f"Cached PR context for PR #{ctx.deps.pr_number}")
+    return result
 
 
 @code_review_agent.tool
 async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
-    """List all files changed in the PR."""
-    return await github_tools.list_changed_files(ctx)
+    """List all files changed in the PR.
+
+    This result is cached to avoid redundant API calls.
+    """
+    cache_key = "changed_files"
+    if cache_key in ctx.deps._cache:
+        logger.debug(f"Returning cached file list for PR #{ctx.deps.pr_number}")
+        return cast(list[str], ctx.deps._cache[cache_key])
+
+    result = await github_tools.list_changed_files(ctx)
+    ctx.deps._cache[cache_key] = result
+    logger.debug(f"Cached {len(result)} changed files for PR #{ctx.deps.pr_number}")
+    return result
 
 
 @code_review_agent.tool
 async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> dict:
-    """Get the diff/patch for a specific file."""
-    return await github_tools.get_file_diff(ctx, file_path)
+    """Get the diff/patch for a specific file.
+
+    This result is cached per file_path to avoid redundant API calls.
+    """
+    cache_key = f"diff:{file_path}"
+    if cache_key in ctx.deps._cache:
+        logger.debug(f"Returning cached diff for {file_path}")
+        return cast(dict, ctx.deps._cache[cache_key])
+
+    result = await github_tools.get_file_diff(ctx, file_path)
+    ctx.deps._cache[cache_key] = result
+    logger.debug(f"Cached diff for {file_path}")
+    return result
 
 
 @code_review_agent.tool

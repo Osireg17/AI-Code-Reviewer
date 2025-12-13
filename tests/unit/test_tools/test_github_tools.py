@@ -286,10 +286,10 @@ class TestGetFullFile:
     @pytest.mark.asyncio
     async def test_get_full_file_invalid_ref(self, mock_ctx):
         """Test file retrieval with invalid ref."""
-        result = await get_full_file(mock_ctx, "test.py", "invalid")
+        with pytest.raises(ValueError) as exc_info:
+            await get_full_file(mock_ctx, "test.py", "invalid")
 
-        assert "Error" in result
-        assert "Invalid ref" in result
+        assert "Invalid ref" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_full_file_directory(self, mock_ctx):
@@ -305,10 +305,10 @@ class TestGetFullFile:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await get_full_file(mock_ctx, "src/", "head")
+        with pytest.raises(ValueError) as exc_info:
+            await get_full_file(mock_ctx, "src/", "head")
 
-        assert "Error" in result
-        assert "directory" in result
+        assert "directory" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_full_file_binary(self, mock_ctx):
@@ -326,10 +326,10 @@ class TestGetFullFile:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await get_full_file(mock_ctx, "image.png", "head")
+        with pytest.raises(ValueError) as exc_info:
+            await get_full_file(mock_ctx, "image.png", "head")
 
-        assert "Error" in result
-        assert "binary file" in result
+        assert "binary file" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_full_file_not_found(self, mock_ctx):
@@ -344,10 +344,11 @@ class TestGetFullFile:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await get_full_file(mock_ctx, "nonexistent.py", "head")
+        with pytest.raises(GithubException) as exc_info:
+            await get_full_file(mock_ctx, "nonexistent.py", "head")
 
-        assert "Error" in result
-        assert "not found" in result
+        assert exc_info.value.status == 404
+        assert "Not Found" in str(exc_info.value)
 
 
 class TestPostReviewComment:
@@ -398,12 +399,13 @@ class TestPostReviewComment:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await post_review_comment(
-            mock_ctx, "src/test.py", 10, "Comment on non-diff line"
-        )
+        with pytest.raises(GithubException) as exc_info:
+            await post_review_comment(
+                mock_ctx, "src/test.py", 10, "Comment on non-diff line"
+            )
 
-        assert "Error" in result
-        assert "GitHub API error" in result
+        assert exc_info.value.status == 422
+        assert "Line not in diff" in str(exc_info.value)
 
 
 class TestPostSummaryComment:
@@ -447,10 +449,10 @@ class TestPostSummaryComment:
     @pytest.mark.asyncio
     async def test_post_summary_comment_invalid_status(self, mock_ctx):
         """Test summary comment with invalid approval status."""
-        result = await post_summary_comment(mock_ctx, "Summary", "INVALID_STATUS")
+        with pytest.raises(ValueError) as exc_info:
+            await post_summary_comment(mock_ctx, "Summary", "INVALID_STATUS")
 
-        assert "Error" in result
-        assert "Invalid approval_status" in result
+        assert "Invalid approval_status" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_post_summary_comment_request_changes(self, mock_ctx):
@@ -482,7 +484,8 @@ class TestPostSummaryComment:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await post_summary_comment(mock_ctx, "Summary", "COMMENT")
+        with pytest.raises(GithubException) as exc_info:
+            await post_summary_comment(mock_ctx, "Summary", "COMMENT")
 
-        assert "Error" in result
-        assert "GitHub API error" in result
+        assert exc_info.value.status == 403
+        assert "Forbidden" in str(exc_info.value)

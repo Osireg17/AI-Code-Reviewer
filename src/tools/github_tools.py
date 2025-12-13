@@ -31,8 +31,8 @@ def _get_repo_and_pr(
         GithubException: If GitHub API request fails
     """
     # Return cached objects if available
-    if ctx.deps._repo is not None and ctx.deps._pr is not None:
-        return ctx.deps._repo, ctx.deps._pr
+    if ctx.deps.repo is not None and ctx.deps.pr is not None:
+        return ctx.deps.repo, ctx.deps.pr
 
     # Fetch and cache
     github_client = ctx.deps.github_client
@@ -43,8 +43,8 @@ def _get_repo_and_pr(
     pr = repo.get_pull(pr_number)
 
     # Cache for future calls
-    ctx.deps._repo = repo
-    ctx.deps._pr = pr
+    ctx.deps.repo = repo
+    ctx.deps.pr = pr
 
     logger.debug(f"Cached repo and PR objects for {repo_full_name}#{pr_number}")
 

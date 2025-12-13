@@ -20,41 +20,36 @@ async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any
         ctx: Run context with ReviewDependencies
 
     Returns:
-        Dictionary with PR context data or error
+        Dictionary with PR context data
+
+    Raises:
+        GithubException: If GitHub API request fails
     """
-    try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
+    github_client = ctx.deps.github_client
+    repo_full_name = ctx.deps.repo_full_name
+    pr_number = ctx.deps.pr_number
 
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
+    # Get repo and PR
+    repo = github_client.get_repo(repo_full_name)
+    pr = repo.get_pull(pr_number)
 
-        # Extract PR data and create PRContext
-        context = PRContext(
-            number=pr.number,
-            title=pr.title,
-            description=pr.body or "",
-            author=pr.user.login,
-            files_changed=pr.changed_files,
-            additions=pr.additions,
-            deletions=pr.deletions,
-            commits=pr.commits,
-            labels=[label.name for label in pr.labels],
-            base_branch=pr.base.ref,
-            head_branch=pr.head.ref,
-        )
+    # Extract PR data and create PRContext
+    context = PRContext(
+        number=pr.number,
+        title=pr.title,
+        description=pr.body or "",
+        author=pr.user.login,
+        files_changed=pr.changed_files,
+        additions=pr.additions,
+        deletions=pr.deletions,
+        commits=pr.commits,
+        labels=[label.name for label in pr.labels],
+        base_branch=pr.base.ref,
+        head_branch=pr.head.ref,
+    )
 
-        logger.info(f"Fetched PR context for #{pr_number} in {repo_full_name}")
-        return context.model_dump()
-
-    except GithubException as e:
-        logger.error(f"GitHub API error fetching PR context: {e}")
-        return {"error": f"GitHub API error: {e}"}
-    except Exception as e:
-        logger.error(f"Unexpected error fetching PR context: {e}")
-        return {"error": f"Unexpected error: {e}"}
+    logger.info(f"Fetched PR context for #{pr_number} in {repo_full_name}")
+    return context.model_dump()
 
 
 async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
@@ -64,27 +59,25 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
         ctx: Run context with ReviewDependencies
 
     Returns:
-        List of changed file paths or error list
+        List of changed file paths
+
+    Raises:
+        GithubException: If GitHub API request fails
     """
-    try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
+    github_client = ctx.deps.github_client
+    repo_full_name = ctx.deps.repo_full_name
+    pr_number = ctx.deps.pr_number
 
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
+    # Get repo and PR
+    repo = github_client.get_repo(repo_full_name)
+    pr = repo.get_pull(pr_number)
 
-        # Get files
-        files = pr.get_files()
-        filenames = [file.filename for file in files]
+    # Get files
+    files = pr.get_files()
+    filenames = [file.filename for file in files]
 
-        logger.info(f"Found {len(filenames)} changed files in PR #{pr_number}")
-        return filenames
-
-    except Exception as e:
-        logger.error(f"Error listing changed files: {e}")
-        return [f"Error: {e}"]
+    logger.info(f"Found {len(filenames)} changed files in PR #{pr_number}")
+    return filenames
 
 
 async def get_file_diff(
@@ -97,55 +90,51 @@ async def get_file_diff(
         file_path: Path to the file
 
     Returns:
-        Dictionary with file diff data or error
+        Dictionary with file diff data
+
+    Raises:
+        ValueError: If file is not found in the PR
+        GithubException: If GitHub API request fails
     """
-    try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
+    github_client = ctx.deps.github_client
+    repo_full_name = ctx.deps.repo_full_name
+    pr_number = ctx.deps.pr_number
 
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
+    # Get repo and PR
+    repo = github_client.get_repo(repo_full_name)
+    pr = repo.get_pull(pr_number)
 
-        # Find matching file
-        files = pr.get_files()
-        target_file = None
-        for file in files:
-            if file.filename == file_path:
-                target_file = file
-                break
+    # Find matching file
+    files = pr.get_files()
+    target_file = None
+    for file in files:
+        if file.filename == file_path:
+            target_file = file
+            break
 
-        # If not found
-        if target_file is None:
-            return {"error": f"File not found: {file_path}"}
+    # If not found
+    if target_file is None:
+        raise ValueError(f"File not found in PR: {file_path}")
 
-        # Create FileDiff model
-        # PyGithub returns status as str, cast to Literal type for FileDiff
-        file_diff = FileDiff(
-            filename=target_file.filename,
-            status=cast(
-                Literal["added", "modified", "removed", "renamed"], target_file.status
-            ),
-            additions=target_file.additions,
-            deletions=target_file.deletions,
-            changes=target_file.changes,
-            patch=target_file.patch or "",
-            previous_filename=target_file.previous_filename,
-        )
+    # Create FileDiff model
+    # PyGithub returns status as str, cast to Literal type for FileDiff
+    file_diff = FileDiff(
+        filename=target_file.filename,
+        status=cast(
+            Literal["added", "modified", "removed", "renamed"], target_file.status
+        ),
+        additions=target_file.additions,
+        deletions=target_file.deletions,
+        changes=target_file.changes,
+        patch=target_file.patch or "",
+        previous_filename=target_file.previous_filename,
+    )
 
-        logger.info(
-            f"Retrieved diff for {file_path} "
-            f"({file_diff.status}, +{file_diff.additions}/-{file_diff.deletions})"
-        )
-        return file_diff.model_dump()
-
-    except GithubException as e:
-        logger.error(f"GitHub API error getting file diff: {e}")
-        return {"error": f"GitHub API error: {e}"}
-    except Exception as e:
-        logger.error(f"Unexpected error getting file diff: {e}")
-        return {"error": f"Unexpected error: {e}"}
+    logger.info(
+        f"Retrieved diff for {file_path} "
+        f"({file_diff.status}, +{file_diff.additions}/-{file_diff.deletions})"
+    )
+    return file_diff.model_dump()
 
 
 async def get_full_file(
@@ -187,7 +176,7 @@ async def get_full_file(
 
         # Decode content
         try:
-            file_content = content.decoded_content.decode("utf-8")
+            file_content = str(content.decoded_content.decode("utf-8"))
             logger.info(
                 f"Retrieved full content of {file_path} at {ref} ({len(file_content)} bytes)"
             )

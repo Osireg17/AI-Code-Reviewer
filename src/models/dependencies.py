@@ -4,7 +4,9 @@ from typing import Any
 
 import httpx
 from github import Github
-from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
+from github.PullRequest import PullRequest
+from github.Repository import Repository
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 
 class ReviewDependencies(BaseModel):
@@ -21,6 +23,10 @@ class ReviewDependencies(BaseModel):
 
     # Private cache for tool results (not serialized)
     _cache: dict[str, Any] = PrivateAttr(default_factory=dict)
+
+    # Cache for GitHub API objects (not serialized)
+    repo: Repository | None = Field(default=None, exclude=True)
+    pr: PullRequest | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

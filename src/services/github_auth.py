@@ -134,7 +134,7 @@ class GitHubAppAuth:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers)
             response.raise_for_status()
 
@@ -187,7 +187,7 @@ class GitHubAppAuth:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        return httpx.AsyncClient(headers=headers)
+        return httpx.AsyncClient(headers=headers, timeout=30.0)
 
     async def create_pr_review(
         self,

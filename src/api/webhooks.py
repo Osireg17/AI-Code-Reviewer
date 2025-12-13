@@ -48,13 +48,19 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
         github_client = Github(auth=auth)
 
         # Create HTTP client for additional API calls
-        async with httpx.AsyncClient() as http_client:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            # Pre-fetch repo and PR objects
+            repo = github_client.get_repo(repo_name)
+            pr = repo.get_pull(pr_number)
+
             # Create dependencies for the agent
             deps = ReviewDependencies(
                 github_client=github_client,
                 http_client=http_client,
                 pr_number=pr_number,
                 repo_full_name=repo_name,
+                repo=repo,
+                pr=pr,
             )
 
             # Run the code review agent

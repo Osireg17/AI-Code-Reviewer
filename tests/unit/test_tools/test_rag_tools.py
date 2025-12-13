@@ -62,11 +62,11 @@ async def test_search_style_guides_service_unavailable(mock_rag_service):
     mock_rag_service.is_available.return_value = False
 
     ctx = MagicMock()
-    result = await search_style_guides(ctx, "test query")
 
-    assert result["success"] is False
-    assert "RAG service is not available" in result["error"]
-    assert result["results"] == []
+    with pytest.raises(RuntimeError) as exc_info:
+        await search_style_guides(ctx, "test query")
+
+    assert "RAG service is not available" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -79,11 +79,11 @@ async def test_search_style_guides_error_handling(mock_rag_service):
     )
 
     ctx = MagicMock()
-    result = await search_style_guides(ctx, "test query")
 
-    assert result["success"] is False
-    assert "Failed to search style guides" in result["error"]
-    assert result["results"] == []
+    with pytest.raises(Exception) as exc_info:
+        await search_style_guides(ctx, "test query")
+
+    assert "Test error" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

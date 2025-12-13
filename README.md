@@ -52,17 +52,15 @@ pre-commit run --all-files
 
 **Configured hooks:**
 - **ruff** - Fast Python linting and formatting
-- **mypy** - Type checking (strict mode on `src/`)
 - **detect-secrets** - Secrets scanning
 - **bandit** - Security vulnerability checking
 - **pre-commit-hooks** - Trailing whitespace, EOF, large files, private keys
 
+**Note:** Type checking with mypy runs separately (not in pre-commit) for speed. Run manually with `mypy src/`
+
 **Skip hooks for quick commits:**
 ```bash
 # Skip all hooks
-SKIP=mypy git commit -m "message"
-
-# Skip specific hook
 git commit -m "message" --no-verify
 ```
 

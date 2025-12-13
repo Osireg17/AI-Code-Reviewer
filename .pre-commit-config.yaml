@@ -1,6 +1,7 @@
 # Pre-commit hooks configuration
 # Install: pip install pre-commit && pre-commit install
 # Run manually: pre-commit run --all-files
+# Note: mypy type checking runs in CI only (not in pre-commit for speed)
 
 repos:
   # Ruff - Fast Python linter and formatter
@@ -10,27 +11,6 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-
-  # Type checking with mypy
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - pydantic>=2.10.0
-          - pydantic-settings>=2.6.0
-          - pydantic-ai[openai,logfire]>=0.0.1
-          - httpx>=0.28.0
-          - pyjwt[crypto]>=2.9.0
-          - langchain-openai>=0.2.0
-          - langchain-pinecone>=0.2.0
-          - pinecone>=5.0.0
-          - fastapi>=0.115.0
-          - langchain-community>=0.3.0
-          - types-PyYAML
-          - types-requests
-        args: [--config-file=pyproject.toml]
-        exclude: ^tests/|^scripts/
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -4,13 +4,51 @@ import logging
 import re
 from typing import Any, Literal, cast
 
-from github import GithubException
+from github.PullRequest import PullRequest
+from github.Repository import Repository
 from pydantic_ai import RunContext
 
 from src.models.dependencies import ReviewDependencies
 from src.models.github_types import FileDiff, PRContext
 
 logger = logging.getLogger(__name__)
+
+
+def _get_repo_and_pr(
+    ctx: RunContext[ReviewDependencies],
+) -> tuple[Repository, PullRequest]:
+    """Get repository and pull request objects from context.
+
+    Caches the objects to avoid redundant API calls during a review run.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+
+    Returns:
+        Tuple of (Repository, PullRequest)
+
+    Raises:
+        GithubException: If GitHub API request fails
+    """
+    # Return cached objects if available
+    if ctx.deps._repo is not None and ctx.deps._pr is not None:
+        return ctx.deps._repo, ctx.deps._pr
+
+    # Fetch and cache
+    github_client = ctx.deps.github_client
+    repo_full_name = ctx.deps.repo_full_name
+    pr_number = ctx.deps.pr_number
+
+    repo = github_client.get_repo(repo_full_name)
+    pr = repo.get_pull(pr_number)
+
+    # Cache for future calls
+    ctx.deps._repo = repo
+    ctx.deps._pr = pr
+
+    logger.debug(f"Cached repo and PR objects for {repo_full_name}#{pr_number}")
+
+    return repo, pr
 
 
 async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any]:
@@ -25,13 +63,7 @@ async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any
     Raises:
         GithubException: If GitHub API request fails
     """
-    github_client = ctx.deps.github_client
-    repo_full_name = ctx.deps.repo_full_name
-    pr_number = ctx.deps.pr_number
-
-    # Get repo and PR
-    repo = github_client.get_repo(repo_full_name)
-    pr = repo.get_pull(pr_number)
+    repo, pr = _get_repo_and_pr(ctx)
 
     # Extract PR data and create PRContext
     context = PRContext(
@@ -48,7 +80,7 @@ async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any
         head_branch=pr.head.ref,
     )
 
-    logger.info(f"Fetched PR context for #{pr_number} in {repo_full_name}")
+    logger.info(f"Fetched PR context for #{pr.number} in {ctx.deps.repo_full_name}")
     return context.model_dump()
 
 
@@ -64,19 +96,13 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     Raises:
         GithubException: If GitHub API request fails
     """
-    github_client = ctx.deps.github_client
-    repo_full_name = ctx.deps.repo_full_name
-    pr_number = ctx.deps.pr_number
-
-    # Get repo and PR
-    repo = github_client.get_repo(repo_full_name)
-    pr = repo.get_pull(pr_number)
+    _, pr = _get_repo_and_pr(ctx)
 
     # Get files
     files = pr.get_files()
     filenames = [file.filename for file in files]
 
-    logger.info(f"Found {len(filenames)} changed files in PR #{pr_number}")
+    logger.info(f"Found {len(filenames)} changed files in PR #{pr.number}")
     return filenames
 
 
@@ -96,13 +122,7 @@ async def get_file_diff(
         ValueError: If file is not found in the PR
         GithubException: If GitHub API request fails
     """
-    github_client = ctx.deps.github_client
-    repo_full_name = ctx.deps.repo_full_name
-    pr_number = ctx.deps.pr_number
-
-    # Get repo and PR
-    repo = github_client.get_repo(repo_full_name)
-    pr = repo.get_pull(pr_number)
+    _, pr = _get_repo_and_pr(ctx)
 
     # Find matching file
     files = pr.get_files()
@@ -148,50 +168,38 @@ async def get_full_file(
         ref: Reference to get file from ("head" or "base")
 
     Returns:
-        File content as string or error message
+        File content as string
+
+    Raises:
+        ValueError: If ref is invalid, path is a directory, or file is binary
+        GithubException: If GitHub API request fails
     """
+    # Validate ref
+    if ref not in ("head", "base"):
+        raise ValueError(f"Invalid ref '{ref}', must be 'head' or 'base'")
+
+    repo, pr = _get_repo_and_pr(ctx)
+
+    # Determine SHA based on ref
+    sha = pr.head.sha if ref == "head" else pr.base.sha
+
+    # Get file content
+    content = repo.get_contents(file_path, ref=sha)
+
+    # Handle directory case
+    if isinstance(content, list):
+        raise ValueError(f"{file_path} is a directory, not a file")
+
+    # Decode content
     try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
+        file_content = str(content.decoded_content.decode("utf-8"))
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{file_path} is a binary file") from e
 
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
-
-        # Determine SHA based on ref
-        if ref == "head":
-            sha = pr.head.sha
-        elif ref == "base":
-            sha = pr.base.sha
-        else:
-            return f"Error: Invalid ref '{ref}', must be 'head' or 'base'"
-
-        # Get file content
-        content = repo.get_contents(file_path, ref=sha)
-
-        # Handle directory case
-        if isinstance(content, list):  # Directory
-            return f"Error: {file_path} is a directory, not a file"
-
-        # Decode content
-        try:
-            file_content = str(content.decoded_content.decode("utf-8"))
-            logger.info(
-                f"Retrieved full content of {file_path} at {ref} ({len(file_content)} bytes)"
-            )
-            return file_content
-        except UnicodeDecodeError:
-            return f"Error: {file_path} is a binary file"
-
-    except GithubException as e:
-        if e.status == 404:
-            return f"Error: File {file_path} not found at {ref}"
-        logger.error(f"GitHub API error getting full file: {e}")
-        return f"Error: GitHub API error: {e}"
-    except Exception as e:
-        logger.error(f"Unexpected error getting full file: {e}")
-        return f"Error: Unexpected error: {e}"
+    logger.info(
+        f"Retrieved full content of {file_path} at {ref} ({len(file_content)} bytes)"
+    )
+    return file_content
 
 
 def _is_line_in_diff(patch: str | None, line_number: int) -> bool:
@@ -256,53 +264,43 @@ async def post_review_comment(
         comment_body: Comment text
 
     Returns:
-        Success message or error message
+        Success message
+
+    Raises:
+        ValueError: If file not found in PR or line not in diff
+        GithubException: If GitHub API request fails
     """
-    try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
+    _, pr = _get_repo_and_pr(ctx)
 
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
+    # Validate line number against diff
+    files = pr.get_files()
+    target_file = None
+    for file in files:
+        if file.filename == file_path:
+            target_file = file
+            break
 
-        # Validate line number against diff
-        files = pr.get_files()
-        target_file = None
-        for file in files:
-            if file.filename == file_path:
-                target_file = file
-                break
+    if not target_file:
+        raise ValueError(f"File {file_path} not found in PR")
 
-        if not target_file:
-            return f"Error: File {file_path} not found in PR"
-
-        if not _is_line_in_diff(target_file.patch, line_number):
-            return (
-                f"Error: Line {line_number} in {file_path} is not part of the diff. "
-                "You can only comment on changed lines or context lines visible in the diff. "
-                "Please check `get_file_diff` to find valid line numbers."
-            )
-
-        # Get latest commit
-        commits = list(pr.get_commits())
-        latest_commit = commits[-1]  # Get most recent commit
-
-        # Create review comment
-        pr.create_review_comment(
-            body=comment_body, commit=latest_commit, path=file_path, line=line_number
+    if not _is_line_in_diff(target_file.patch, line_number):
+        raise ValueError(
+            f"Line {line_number} in {file_path} is not part of the diff. "
+            "You can only comment on changed lines or context lines visible in the diff. "
+            "Please check `get_file_diff` to find valid line numbers."
         )
 
-        logger.info(f"Posted review comment on {file_path}:{line_number}")
-        return f"Posted comment on {file_path}:{line_number}"
+    # Get latest commit
+    commits = list(pr.get_commits())
+    latest_commit = commits[-1]  # Get most recent commit
 
-    except GithubException as e:
-        logger.error(f"GitHub API error posting comment: {e}")
-        return f"Error: GitHub API error: {e}"
-    except Exception as e:
-        logger.error(f"Unexpected error posting comment: {e}")
-        return f"Error: Unexpected error: {e}"
+    # Create review comment
+    pr.create_review_comment(
+        body=comment_body, commit=latest_commit, path=file_path, line=line_number
+    )
+
+    logger.info(f"Posted review comment on {file_path}:{line_number}")
+    return f"Posted comment on {file_path}:{line_number}"
 
 
 async def post_summary_comment(
@@ -320,33 +318,25 @@ async def post_summary_comment(
         approval_status: "APPROVE", "REQUEST_CHANGES", or "COMMENT"
 
     Returns:
-        Success message or error message
+        Success message
+
+    Raises:
+        ValueError: If approval_status is invalid
+        GithubException: If GitHub API request fails
     """
     # Validate approval_status
     valid_statuses = ["APPROVE", "REQUEST_CHANGES", "COMMENT"]
     if approval_status not in valid_statuses:
-        return f"Error: Invalid approval_status '{approval_status}'. Must be one of {valid_statuses}"
-
-    try:
-        github_client = ctx.deps.github_client
-        repo_full_name = ctx.deps.repo_full_name
-        pr_number = ctx.deps.pr_number
-
-        # Get repo and PR
-        repo = github_client.get_repo(repo_full_name)
-        pr = repo.get_pull(pr_number)
-
-        # Create review
-        pr.create_review(body=summary, event=approval_status)
-
-        logger.info(
-            f"Posted review summary for PR #{pr_number} with status: {approval_status}"
+        raise ValueError(
+            f"Invalid approval_status '{approval_status}'. Must be one of {valid_statuses}"
         )
-        return f"Posted review with status: {approval_status}"
 
-    except GithubException as e:
-        logger.error(f"GitHub API error posting review: {e}")
-        return f"Error: GitHub API error: {e}"
-    except Exception as e:
-        logger.error(f"Unexpected error posting review: {e}")
-        return f"Error: Unexpected error: {e}"
+    _, pr = _get_repo_and_pr(ctx)
+
+    # Create review
+    pr.create_review(body=summary, event=approval_status)
+
+    logger.info(
+        f"Posted review summary for PR #{pr.number} with status: {approval_status}"
+    )
+    return f"Posted review with status: {approval_status}"

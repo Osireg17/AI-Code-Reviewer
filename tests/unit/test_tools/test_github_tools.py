@@ -97,10 +97,11 @@ class TestFetchPRContext:
             404, "Not Found", None
         )
 
-        result = await fetch_pr_context(mock_ctx)
+        with pytest.raises(GithubException) as exc_info:
+            await fetch_pr_context(mock_ctx)
 
-        assert "error" in result
-        assert "GitHub API error" in result["error"]
+        assert exc_info.value.status == 404
+        assert "Not Found" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_fetch_pr_context_empty_body(self, mock_ctx):
@@ -160,10 +161,10 @@ class TestListChangedFiles:
         """Test file listing with error."""
         mock_ctx.deps.github_client.get_repo.side_effect = Exception("API Error")
 
-        result = await list_changed_files(mock_ctx)
+        with pytest.raises(Exception) as exc_info:
+            await list_changed_files(mock_ctx)
 
-        assert len(result) == 1
-        assert "Error" in result[0]
+        assert "API Error" in str(exc_info.value)
 
 
 class TestGetFileDiff:
@@ -208,10 +209,10 @@ class TestGetFileDiff:
         mock_ctx.deps.github_client.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pr
 
-        result = await get_file_diff(mock_ctx, "nonexistent.py")
+        with pytest.raises(ValueError) as exc_info:
+            await get_file_diff(mock_ctx, "nonexistent.py")
 
-        assert "error" in result
-        assert "File not found" in result["error"]
+        assert "File not found in PR: nonexistent.py" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_file_diff_renamed_file(self, mock_ctx):

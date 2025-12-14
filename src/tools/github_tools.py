@@ -10,6 +10,7 @@ from pydantic_ai import RunContext
 
 from src.models.dependencies import ReviewDependencies
 from src.models.github_types import FileDiff, PRContext
+from src.utils.filters import is_code_file, is_config_file, should_review_file
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,72 @@ async def fetch_pr_context(ctx: RunContext[ReviewDependencies]) -> dict[str, Any
     return context.model_dump()
 
 
+def get_file_type_description(file_path: str) -> str:
+    """Get a human-readable description of the file type.
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        Description of the file type
+    """
+    if is_code_file(file_path):
+        return "code file"
+    elif is_config_file(file_path):
+        return "config file"
+    else:
+        return "other file"
+
+
+async def check_should_review_file(
+    ctx: RunContext[ReviewDependencies], file_path: str
+) -> dict[str, Any]:
+    """Check if a file should be reviewed and provide detailed logging.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        file_path: Path to the file
+
+    Returns:
+        Dictionary with:
+            - should_review: bool
+            - file_type: str (e.g., "code file", "config file")
+            - reason: str (reason for skipping if should_review is False)
+    """
+    should_review = should_review_file(file_path)
+    file_type = get_file_type_description(file_path)
+
+    result = {
+        "should_review": should_review,
+        "file_type": file_type,
+        "file_path": file_path,
+    }
+
+    if not should_review:
+        # Determine reason for skipping
+        if ".lock" in file_path:
+            reason = "lock file"
+        elif ".min." in file_path:
+            reason = "minified file"
+        elif any(
+            x in file_path
+            for x in ["node_modules/", "dist/", "build/", "__pycache__/", "venv/"]
+        ):
+            reason = "generated/dependency directory"
+        elif file_path.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf")):
+            reason = "binary/media file"
+        else:
+            reason = "excluded by filter rules"
+
+        result["reason"] = reason
+        logger.info(f"Skipping {file_path}: {reason}")
+    else:
+        result["reason"] = None
+        logger.debug(f"Will review {file_path} ({file_type})")
+
+    return result
+
+
 async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     """List all files changed in the PR.
 
@@ -102,7 +169,17 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     files = pr.get_files()
     filenames = [file.filename for file in files]
 
-    logger.info(f"Found {len(filenames)} changed files in PR #{pr.number}")
+    # Log file type breakdown
+    code_files = [f for f in filenames if is_code_file(f)]
+    config_files = [f for f in filenames if is_config_file(f)]
+    reviewable_files = [f for f in filenames if should_review_file(f)]
+
+    logger.info(
+        f"Found {len(filenames)} changed files in PR #{pr.number}: "
+        f"{len(code_files)} code, {len(config_files)} config, "
+        f"{len(reviewable_files)} reviewable"
+    )
+
     return filenames
 
 

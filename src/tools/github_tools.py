@@ -456,7 +456,8 @@ async def post_summary_comment(
         ValueError: If approval_status is invalid
         GithubException: If GitHub API request fails
     """
-    # Validate approval_status
+    # Normalize and validate approval_status
+    approval_status = approval_status.upper()
     valid_statuses = ["APPROVE", "REQUEST_CHANGES", "COMMENT"]
     if approval_status not in valid_statuses:
         raise ValueError(

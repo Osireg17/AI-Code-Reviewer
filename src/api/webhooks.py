@@ -114,9 +114,9 @@ async def process_pr_review(
             # Post summary as a review
             summary_text = validated_result.format_summary_markdown()
             approval_status_map = {
-                "approve": "APPROVE",
-                "request_changes": "REQUEST_CHANGES",
-                "comment": "COMMENT",
+                "APPROVE": "APPROVE",
+                "REQUEST_CHANGES": "REQUEST_CHANGES",
+                "COMMENT": "COMMENT",
             }
             approval_status = approval_status_map.get(
                 validated_result.summary.recommendation, "COMMENT"

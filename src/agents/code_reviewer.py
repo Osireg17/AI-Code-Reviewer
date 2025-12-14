@@ -32,24 +32,20 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
    * 🔄 Call `list_changed_files()` - File list is cached
 
 2. **File-level review** (for each changed file):
-   a. Call `get_file_diff(file_path)` to get the diff
-   b. Call `search_style_guides(query, language)` to fetch relevant best practices
-   c. Analyze the diff using both local reasoning + RAG insights
-   d. **CRITICAL:** For every issue found, you MUST call `post_review_comment(file_path, line_number, comment_body)` immediately
-      * This is NOT optional - comments must be posted to GitHub, not just stored internally
+   a. **FIRST:** Call `check_should_review_file(file_path)` to determine if the file should be reviewed
+      * If `should_review` is False, skip this file and move to the next one
+      * This automatically filters out lock files, minified files, binaries, etc.
+   b. Call `get_file_diff(file_path)` to get the diff
+   c. Call `get_full_file(file_path, ref="head")` ONLY if needed for context or when the diff is insufficient to understand logic
+   d. Call `search_style_guides(query, language)` to fetch relevant best practices
+   e. Analyze the diff using both local reasoning + RAG insights
+   f. For every issue found, Call `post_review_comment(file_path, line_number, comment_body)`
+      * **CRITICAL:** Only comment on lines that exist in the diff (check the patch field in get_file_diff result)
       * Keep comments short and code-focused
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
 
-3. **Full-file inspection** (optional - use sparingly)
-   * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues
-   * **IMPORTANT:** Check the file status from `get_file_diff()` first:
-     - If status is "added" → file only exists at `ref="head"`
-     - If status is "removed" → file only exists at `ref="base"`
-     - If status is "modified" or "renamed" → file exists at both refs
-   * Calling `get_full_file()` for a non-existent file will cause an error
-
-4. **Summary** (call ONCE at the end)
+4. **Summary** (call ONCE at end, once all files are reviewed)
    * Call `post_summary_comment()` **after** all inline comments.
 
 ---
@@ -65,7 +61,7 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 
 ### **RAG Usage (search_style_guides)**
 
-* Invoke **before analyzing each file** to load relevant best practices.
+* Invoke **after analysing each file** so that we are comparing the code from the pull request with best practices.
 * Use for guidance on:
   * naming conventions
   * design patterns
@@ -89,8 +85,7 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-# Create the code review agent with structured output
-# Post-processing will handle posting comments to GitHub
+# Create the code review agent
 code_review_agent = Agent(
     model=f"openai:{settings.openai_model}",
     deps_type=ReviewDependencies,
@@ -135,6 +130,23 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
 
 
 @code_review_agent.tool
+async def check_should_review_file(
+    ctx: RunContext[ReviewDependencies], file_path: str
+) -> dict:
+    """Check if a file should be reviewed based on type and content.
+
+    Use this tool BEFORE reviewing each file to determine if it should be skipped.
+    This will skip lock files, minified files, generated code, binaries, etc.
+
+    Returns dict with:
+        - should_review: bool - whether to review this file
+        - file_type: str - type of file (e.g., "code file", "config file")
+        - reason: str or None - reason for skipping if should_review is False
+    """
+    return await github_tools.check_should_review_file(ctx, file_path)
+
+
+@code_review_agent.tool
 async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> dict:
     """Get the diff/patch for a specific file.
 
@@ -155,15 +167,7 @@ async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> 
 async def get_full_file(
     ctx: RunContext[ReviewDependencies], file_path: str, ref: str = "head"
 ) -> str:
-    """Get complete file content at head or base revision.
-
-    IMPORTANT: Before calling this tool, ALWAYS check the file status from get_file_diff() first:
-    - If file status is "added": only use ref="head" (file doesn't exist in base)
-    - If file status is "removed": only use ref="base" (file doesn't exist in head)
-    - If file status is "modified" or "renamed": can use either ref
-
-    Calling this for a non-existent file will cause an error and fail the review.
-    """
+    """Get complete file content at head or base revision."""
     return await github_tools.get_full_file(ctx, file_path, ref)
 
 

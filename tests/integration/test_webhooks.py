@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -92,7 +93,9 @@ def test_pr_opened_event(
         "User-Agent": "GitHub-Hookshot/test",
     }
 
-    response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
+    # Mock the background review process to avoid real GitHub API calls
+    with patch("src.api.webhooks.process_pr_review", new=AsyncMock()):
+        response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 
     assert response.status_code == 200
     data = response.json()

@@ -172,13 +172,14 @@ async def test_search_style_guides_below_threshold(mock_vector_store):
 
 @pytest.mark.asyncio
 async def test_search_style_guides_error_handling():
-    """Test error handling in search."""
+    """Test that errors bubble up in search."""
     with (
         patch.object(rag_service, "is_available", return_value=True),
         patch(
             "src.services.rag_service.PineconeVectorStore",
             side_effect=Exception("Test error"),
         ),
+        pytest.raises(Exception, match="Test error"),
     ):
-        results = await rag_service.search_style_guides("test")
-        assert results == []
+        # Errors should now bubble up instead of being caught
+        await rag_service.search_style_guides("test")

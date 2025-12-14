@@ -63,6 +63,15 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
                 pr=pr,
             )
 
+            # Post initial "review in progress" comment
+            bot_name = settings.bot_name
+            progress_message = (
+                f"🤖 **{bot_name}** is currently reviewing your PR...\n\n"
+                f"I'll post detailed feedback shortly. Thanks for your patience!"
+            )
+            pr.create_issue_comment(body=progress_message)
+            logger.info(f"Posted 'review in progress' comment for PR #{pr_number}")
+
             # Run the code review agent
             logger.info(f"Running AI code review for PR #{pr_number}")
             result = await code_review_agent.run(
@@ -86,6 +95,7 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
 
     except Exception as e:
         logger.error(f"Error processing review for {review_key}: {e}", exc_info=True)
+        raise
 
     finally:
         # Remove from active set

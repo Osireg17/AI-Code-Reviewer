@@ -40,8 +40,13 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
 
-3. **Full-file inspection** (optional)
-   * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues.
+3. **Full-file inspection** (optional - use sparingly)
+   * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues
+   * **IMPORTANT:** Check the file status from `get_file_diff()` first:
+     - If status is "added" → file only exists at `ref="head"`
+     - If status is "removed" → file only exists at `ref="base"`
+     - If status is "modified" or "renamed" → file exists at both refs
+   * Calling `get_full_file()` for a non-existent file will cause an error
 
 4. **Summary** (call ONCE at the end)
    * Call `post_summary_comment()` **after** all inline comments.
@@ -148,7 +153,15 @@ async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> 
 async def get_full_file(
     ctx: RunContext[ReviewDependencies], file_path: str, ref: str = "head"
 ) -> str:
-    """Get complete file content at head or base revision."""
+    """Get complete file content at head or base revision.
+
+    IMPORTANT: Before calling this tool, ALWAYS check the file status from get_file_diff() first:
+    - If file status is "added": only use ref="head" (file doesn't exist in base)
+    - If file status is "removed": only use ref="base" (file doesn't exist in head)
+    - If file status is "modified" or "renamed": can use either ref
+
+    Calling this for a non-existent file will cause an error and fail the review.
+    """
     return await github_tools.get_full_file(ctx, file_path, ref)
 
 

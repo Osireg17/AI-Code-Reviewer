@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from github import Auth, Github
 
-from src.agents.code_reviewer import code_review_agent, validate_review_result
+from src.agents.code_reviewer import code_review_agent
 from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.services.github_auth import github_app_auth
@@ -73,25 +73,17 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
             logger.info(f"Posted 'review in progress' comment for PR #{pr_number}")
 
             # Run the code review agent
+            # The agent will post comments directly via tools, no structured output
             logger.info(f"Running AI code review for PR #{pr_number}")
-            result = await code_review_agent.run(
+            await code_review_agent.run(
                 user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
-                f"Analyze the changes and provide constructive feedback.",
+                f"Analyze the changes and provide constructive feedback. "
+                f"Remember to call post_review_comment() for each issue you find, "
+                f"then call post_summary_comment() at the end with your overall assessment.",
                 deps=deps,
             )
 
-            # Validate and correct the result
-            validated_result = validate_review_result(
-                repo_full_name=repo_name,
-                pr_number=pr_number,
-                result=result.output,
-            )
-
-            logger.info(
-                f"Review completed for {review_key}: "
-                f"{validated_result.total_comments} comments, "
-                f"recommendation: {validated_result.summary.recommendation}"
-            )
+            logger.info(f"Review completed for {review_key}")
 
     except Exception as e:
         logger.error(f"Error processing review for {review_key}: {e}", exc_info=True)

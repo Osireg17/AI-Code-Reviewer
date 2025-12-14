@@ -35,7 +35,8 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
    a. Call `get_file_diff(file_path)` to get the diff
    b. Call `search_style_guides(query, language)` to fetch relevant best practices
    c. Analyze the diff using both local reasoning + RAG insights
-   d. For every issue found, call `post_review_comment(file_path, line_number, comment_body)`
+   d. **CRITICAL:** For every issue found, you MUST call `post_review_comment(file_path, line_number, comment_body)` immediately
+      * This is NOT optional - comments must be posted to GitHub, not just stored internally
       * Keep comments short and code-focused
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
@@ -88,11 +89,11 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-# Create the code review agent
+# Create the code review agent without structured output
+# The agent will call post_review_comment() and post_summary_comment() directly
 code_review_agent = Agent(
     model=f"openai:{settings.openai_model}",
     deps_type=ReviewDependencies,
-    output_type=CodeReviewResult,
     system_prompt=SYSTEM_PROMPT,
     retries=settings.max_retries,
 )

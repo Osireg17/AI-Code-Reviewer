@@ -154,8 +154,15 @@ async def process_pr_review(
                 validated_result.summary.recommendation, "COMMENT"
             )
 
-            pr.create_review(body=summary_text, event=approval_status)
-            logger.info(f"Posted summary review with status: {approval_status}")
+            # If the agent already posted the summary via the tool, skip re-posting
+            summary_already_posted = deps._cache.get("summary_review_posted", False)
+            if summary_already_posted:
+                logger.info(
+                    "Summary review already posted by agent; skipping webhook summary post"
+                )
+            else:
+                pr.create_review(body=summary_text, event=approval_status)
+                logger.info(f"Posted summary review with status: {approval_status}")
 
             logger.info(
                 f"Review completed for {review_key}: "

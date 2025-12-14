@@ -469,6 +469,9 @@ async def post_summary_comment(
     # Create review
     pr.create_review(body=summary, event=approval_status)
 
+    # Record that the agent already posted the summary review to avoid duplicates
+    ctx.deps._cache["summary_review_posted"] = True
+
     logger.info(
         f"Posted review summary for PR #{pr.number} with status: {approval_status}"
     )

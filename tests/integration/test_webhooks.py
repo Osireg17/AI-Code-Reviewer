@@ -140,8 +140,8 @@ def test_pr_ignored_event(
     client: TestClient, webhook_url: str, webhook_secret: str, pr_opened_payload: dict
 ) -> None:
     """Test webhook ignores non-processed PR events."""
-    # Change action to something we don't process
-    pr_opened_payload["action"] = "closed"
+    # Change action to something we don't process (not opened, reopened, synchronize, or closed)
+    pr_opened_payload["action"] = "edited"
     signature = generate_signature(pr_opened_payload, webhook_secret)
 
     headers = {

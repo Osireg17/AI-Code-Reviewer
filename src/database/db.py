@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.config.settings import settings
 from src.models.conversation import Base
 
+# Import models to ensure they're registered with Base.metadata
+from src.models.review_state import ReviewState  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # Create database engine

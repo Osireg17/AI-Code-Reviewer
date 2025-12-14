@@ -120,6 +120,7 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     """List all files changed in the PR.
 
     This result is cached to avoid redundant API calls.
+    For incremental reviews, only returns files changed since last review.
     """
     cache_key = "changed_files"
     if cache_key in ctx.deps._cache:

@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     # Database Configuration
     database_url: str = Field(
         default="postgresql://postgres:password@localhost:5432/ai_code_reviewer_dev",  # pragma: allowlist secret
-        description="PostgreSQL database URL. Use private URL (postgres.railway.internal) in Railway, public URL for local dev",
+        description="PostgreSQL database URL (required). Use private URL (postgres.railway.internal) in Railway, public URL for local dev",
     )
 
     # RAG Configuration

@@ -59,7 +59,7 @@ class ConversationThread(Base):
     thread_messages: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON,
         nullable=False,
-        default=list,
+        default=lambda: [],
         comment="Array of message objects in chronological order",
     )
 

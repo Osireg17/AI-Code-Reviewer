@@ -67,13 +67,9 @@ def init_db() -> None:
 
     For production deployments, use Alembic migrations instead.
     """
-    try:
-        logger.info("Initializing database tables...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+    logger.info("Initializing database tables...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables initialized successfully")
 
 
 def check_db_connection() -> bool:

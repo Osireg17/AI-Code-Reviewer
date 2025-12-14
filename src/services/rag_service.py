@@ -106,48 +106,43 @@ class RAGService:
         if top_k is None:
             top_k = settings.rag_top_k
 
-        try:
-            # Create vector store with namespace filtering
-            namespace = language or None
+        # Create vector store with namespace filtering
+        namespace = language or None
 
-            vector_store = PineconeVectorStore(
-                index=self.index,
-                embedding=self.embeddings,
-                namespace=namespace,
-            )
+        vector_store = PineconeVectorStore(
+            index=self.index,
+            embedding=self.embeddings,
+            namespace=namespace,
+        )
 
-            # LangChain handles: embedding query + similarity search
-            results = await vector_store.asimilarity_search_with_score(
-                query=query,
-                k=top_k,
-            )
+        # LangChain handles: embedding query + similarity search
+        results = await vector_store.asimilarity_search_with_score(
+            query=query,
+            k=top_k,
+        )
 
-            # Format results
-            formatted_results = []
-            for doc, score in results:
-                # Convert distance to similarity (lower distance = higher similarity)
-                similarity = 1 - score
+        # Format results
+        formatted_results = []
+        for doc, score in results:
+            # Convert distance to similarity (lower distance = higher similarity)
+            similarity = 1 - score
 
-                # Filter by minimum similarity threshold
-                if similarity >= settings.rag_min_similarity:
-                    formatted_results.append(
-                        {
-                            "content": doc.page_content,
-                            "metadata": doc.metadata,
-                            "similarity": similarity,
-                        }
-                    )
+            # Filter by minimum similarity threshold
+            if similarity >= settings.rag_min_similarity:
+                formatted_results.append(
+                    {
+                        "content": doc.page_content,
+                        "metadata": doc.metadata,
+                        "similarity": similarity,
+                    }
+                )
 
-            logger.info(
-                f"RAG search: query='{query[:50]}...', language={language}, "
-                f"found={len(formatted_results)} results"
-            )
+        logger.info(
+            f"RAG search: query='{query[:50]}...', language={language}, "
+            f"found={len(formatted_results)} results"
+        )
 
-            return formatted_results
-
-        except Exception as e:
-            logger.error(f"RAG search failed: {e}")
-            return []
+        return formatted_results
 
     def format_results_for_context(self, results: list[dict[str, Any]]) -> str:
         """Format search results into context string for LLM.

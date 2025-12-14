@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     )
 
     # Review Configuration
+    bot_name: str = Field(
+        default="SearchLightAI", description="Bot name to display in comments"
+    )
     max_files_per_review: int = Field(
         default=10, description="Maximum number of files to review per PR"
     )

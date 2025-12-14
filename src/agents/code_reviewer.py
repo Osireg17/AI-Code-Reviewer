@@ -35,13 +35,19 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
    a. Call `get_file_diff(file_path)` to get the diff
    b. Call `search_style_guides(query, language)` to fetch relevant best practices
    c. Analyze the diff using both local reasoning + RAG insights
-   d. For every issue found, call `post_review_comment(file_path, line_number, comment_body)`
+   d. **CRITICAL:** For every issue found, you MUST call `post_review_comment(file_path, line_number, comment_body)` immediately
+      * This is NOT optional - comments must be posted to GitHub, not just stored internally
       * Keep comments short and code-focused
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
 
-3. **Full-file inspection** (optional)
-   * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues.
+3. **Full-file inspection** (optional - use sparingly)
+   * Only call `get_full_file()` when the diff is insufficient to understand logic or potential issues
+   * **IMPORTANT:** Check the file status from `get_file_diff()` first:
+     - If status is "added" → file only exists at `ref="head"`
+     - If status is "removed" → file only exists at `ref="base"`
+     - If status is "modified" or "renamed" → file exists at both refs
+   * Calling `get_full_file()` for a non-existent file will cause an error
 
 4. **Summary** (call ONCE at the end)
    * Call `post_summary_comment()` **after** all inline comments.
@@ -83,11 +89,11 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-# Create the code review agent
+# Create the code review agent without structured output
+# The agent will call post_review_comment() and post_summary_comment() directly
 code_review_agent = Agent(
     model=f"openai:{settings.openai_model}",
     deps_type=ReviewDependencies,
-    output_type=CodeReviewResult,
     system_prompt=SYSTEM_PROMPT,
     retries=settings.max_retries,
 )
@@ -148,7 +154,15 @@ async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> 
 async def get_full_file(
     ctx: RunContext[ReviewDependencies], file_path: str, ref: str = "head"
 ) -> str:
-    """Get complete file content at head or base revision."""
+    """Get complete file content at head or base revision.
+
+    IMPORTANT: Before calling this tool, ALWAYS check the file status from get_file_diff() first:
+    - If file status is "added": only use ref="head" (file doesn't exist in base)
+    - If file status is "removed": only use ref="base" (file doesn't exist in head)
+    - If file status is "modified" or "renamed": can use either ref
+
+    Calling this for a non-existent file will cause an error and fail the review.
+    """
     return await github_tools.get_full_file(ctx, file_path, ref)
 
 

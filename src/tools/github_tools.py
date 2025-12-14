@@ -303,6 +303,34 @@ async def post_review_comment(
     return f"Posted comment on {file_path}:{line_number}"
 
 
+async def post_issue_comment(
+    ctx: RunContext[ReviewDependencies],
+    comment_body: str,
+) -> str:
+    """Post a simple issue comment on the PR.
+
+    This is used for notifications like "review in progress" messages.
+    Unlike post_summary_comment, this doesn't create a review.
+
+    Args:
+        ctx: Run context with ReviewDependencies
+        comment_body: Comment text
+
+    Returns:
+        Success message
+
+    Raises:
+        GithubException: If GitHub API request fails
+    """
+    _, pr = _get_repo_and_pr(ctx)
+
+    # Create issue comment (simpler than review comment)
+    pr.create_issue_comment(body=comment_body)
+
+    logger.info(f"Posted issue comment on PR #{pr.number}")
+    return f"Posted issue comment on PR #{pr.number}"
+
+
 async def post_summary_comment(
     ctx: RunContext[ReviewDependencies],
     summary: str,

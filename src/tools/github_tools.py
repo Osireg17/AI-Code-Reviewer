@@ -154,6 +154,9 @@ async def check_should_review_file(
 async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     """List all files changed in the PR.
 
+    For incremental reviews, only returns files changed since last review.
+    Otherwise returns all files changed in the PR.
+
     Args:
         ctx: Run context with ReviewDependencies
 
@@ -163,11 +166,22 @@ async def list_changed_files(ctx: RunContext[ReviewDependencies]) -> list[str]:
     Raises:
         GithubException: If GitHub API request fails
     """
-    _, pr = _get_repo_and_pr(ctx)
+    repo, pr = _get_repo_and_pr(ctx)
 
-    # Get files
-    files = pr.get_files()
-    filenames = [file.filename for file in files]
+    # Check if this is an incremental review
+    if ctx.deps.is_incremental_review and ctx.deps.base_commit_sha:
+        # Get files changed between base and head commits
+        comparison = repo.compare(ctx.deps.base_commit_sha, pr.head.sha)
+        filenames = [file.filename for file in comparison.files]
+
+        logger.info(
+            f"Incremental review: Found {len(filenames)} files changed "
+            f"since {ctx.deps.base_commit_sha[:7]} in PR #{pr.number}"
+        )
+    else:
+        # Get all files changed in PR (full review)
+        files = pr.get_files()
+        filenames = [file.filename for file in files]
 
     # Log file type breakdown
     code_files = [f for f in filenames if is_code_file(f)]

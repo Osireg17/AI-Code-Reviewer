@@ -95,4 +95,5 @@ async def root() -> dict[str, str]:
         "message": "AI Code Reviewer API",
         "docs": "/docs",
         "health": "/health",
+        "database": "/database",
     }

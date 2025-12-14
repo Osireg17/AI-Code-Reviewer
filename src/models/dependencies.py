@@ -7,6 +7,7 @@ from github import Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from sqlalchemy.orm import Session
 
 
 class ReviewDependencies(BaseModel):
@@ -20,6 +21,9 @@ class ReviewDependencies(BaseModel):
     http_client: httpx.AsyncClient
     pr_number: int
     repo_full_name: str
+    db_session: Session | None = Field(default=None, exclude=True)
+    is_incremental_review: bool = Field(default=False, exclude=True)
+    base_commit_sha: str | None = Field(default=None, exclude=True)
 
     # Private cache for tool results (not serialized)
     _cache: dict[str, Any] = PrivateAttr(default_factory=dict)

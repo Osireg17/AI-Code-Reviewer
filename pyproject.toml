@@ -29,6 +29,10 @@ dependencies = [
     "pypdf>=5.1.0",
     "pyyaml>=6.0.0",
     "tiktoken>=0.8.0",
+    # Database
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
@@ -143,5 +147,6 @@ strict_concatenate = true
 module = [
     "github.*",
     "logfire.*",
+    "sqlalchemy.*",
 ]
 ignore_missing_imports = true

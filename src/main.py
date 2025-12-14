@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api import webhooks
 from src.config.settings import settings
+from src.database.db import check_db_connection, init_db
 from src.utils.logging import setup_observability
 
 # Setup logging and observability
@@ -23,6 +24,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Starting AI Code Reviewer in {settings.environment} environment")
     if settings.logfire_token:
         logger.info("Logfire observability enabled")
+
+    # Initialise database tables
+    logger.info("Initializing database...")
+    init_db()
+    check_db_connection()
+    logger.info("Database initialized and connected successfully")
 
     yield
 
@@ -68,6 +75,16 @@ async def health_check() -> dict[str, str | bool]:
         "openai_configured": bool(settings.openai_api_key),
         "logfire_enabled": bool(settings.logfire_token),
         "webhook_secret_configured": bool(settings.github_webhook_secret),
+    }
+
+
+@app.get("/database")
+async def database() -> dict[str, str | bool]:
+    """Database connection health check endpoint."""
+    db_connected = check_db_connection()
+    return {
+        "database_connected": db_connected,
+        "database_url": settings.database_url.split("@")[-1],  # Hide credentials
     }
 
 

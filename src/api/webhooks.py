@@ -154,9 +154,9 @@ async def process_pr_review(
                 validated_result.summary.recommendation, "COMMENT"
             )
 
-            # If the agent already posted the summary via the tool, skip re-posting
-            summary_already_posted = deps._cache.get("summary_review_posted", False)
-            if summary_already_posted:
+            if summary_already_posted := deps._cache.get(  # noqa: F841
+                "summary_review_posted", False
+            ):
                 logger.info(
                     "Summary review already posted by agent; skipping webhook summary post"
                 )

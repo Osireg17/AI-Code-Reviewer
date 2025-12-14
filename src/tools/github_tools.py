@@ -193,7 +193,15 @@ async def get_file_diff(
         file_path: Path to the file
 
     Returns:
-        Dictionary with file diff data
+        Dictionary with file diff data including:
+            - filename: str
+            - status: str ("added", "modified", "removed", "renamed")
+            - additions: int
+            - deletions: int
+            - changes: int
+            - patch: str (the diff content)
+            - previous_filename: str | None
+            - valid_comment_lines: list[int] (line numbers that can be commented on)
 
     Raises:
         ValueError: If file is not found in the PR
@@ -227,11 +235,20 @@ async def get_file_diff(
         previous_filename=target_file.previous_filename,
     )
 
+    # Extract valid line numbers for commenting
+    valid_lines = _extract_valid_line_numbers(target_file.patch)
+
     logger.info(
         f"Retrieved diff for {file_path} "
-        f"({file_diff.status}, +{file_diff.additions}/-{file_diff.deletions})"
+        f"({file_diff.status}, +{file_diff.additions}/-{file_diff.deletions}, "
+        f"{len(valid_lines)} valid comment lines)"
     )
-    return file_diff.model_dump()
+
+    # Add valid_comment_lines to the return dict
+    result = file_diff.model_dump()
+    result["valid_comment_lines"] = valid_lines
+
+    return result
 
 
 async def get_full_file(
@@ -279,26 +296,23 @@ async def get_full_file(
     return file_content
 
 
-def _is_line_in_diff(patch: str | None, line_number: int) -> bool:
-    """Check if a line number exists in the diff patch.
+def _extract_valid_line_numbers(patch: str | None) -> list[int]:
+    """Extract all valid line numbers that can be commented on from a diff patch.
 
     Args:
         patch: The diff patch string
-        line_number: The line number to check
 
     Returns:
-        True if the line is in the diff, False otherwise
+        Sorted list of line numbers that can receive comments
     """
     if not patch:
-        return False
+        return []
 
-    # Simple parser
-    # Iterate through lines
+    valid_lines = []
     lines = patch.split("\n")
     current_new_line = 0
 
     # Regex for hunk header: @@ -old_start,old_len +new_start,new_len @@
-    # Note: len is optional if it is 1
     hunk_header_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
     in_hunk = False
@@ -314,16 +328,29 @@ def _is_line_in_diff(patch: str | None, line_number: int) -> bool:
         if not in_hunk:
             continue
 
+        # Lines starting with + or space can be commented on
         if line.startswith("+") or line.startswith(" "):
-            # This line corresponds to current_new_line
-            if current_new_line == line_number:
-                return True
+            valid_lines.append(current_new_line)
             current_new_line += 1
         elif line.startswith("-"):
-            # This line is in old file, doesn't advance new file line count
+            # Deleted lines don't advance new file line count
             pass
 
-    return False
+    return sorted(valid_lines)
+
+
+def _is_line_in_diff(patch: str | None, line_number: int) -> bool:
+    """Check if a line number exists in the diff patch.
+
+    Args:
+        patch: The diff patch string
+        line_number: The line number to check
+
+    Returns:
+        True if the line is in the diff, False otherwise
+    """
+    valid_lines = _extract_valid_line_numbers(patch)
+    return line_number in valid_lines
 
 
 async def post_review_comment(

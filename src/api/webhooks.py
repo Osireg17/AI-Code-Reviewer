@@ -95,7 +95,35 @@ async def process_pr_review(
 
             # Post all inline comments to GitHub
             logger.info(f"Posting {len(validated_result.comments)} inline comments")
+
+            # Build a cache of valid line numbers per file for validation
+            files_cache = {}
+            for file in pr.get_files():
+                files_cache[file.filename] = file.patch
+
+            posted_count = 0
+            skipped_count = 0
+
             for comment in validated_result.comments:
+                # Validate line number is in the diff before posting
+                file_patch = files_cache.get(comment.file_path)
+                if not file_patch:
+                    logger.warning(
+                        f"Skipping comment on {comment.file_path}:{comment.line_number} - file not found in PR"
+                    )
+                    skipped_count += 1
+                    continue
+
+                # Check if line is valid for commenting
+                from src.tools.github_tools import _is_line_in_diff
+
+                if not _is_line_in_diff(file_patch, comment.line_number):
+                    logger.warning(
+                        f"Skipping comment on {comment.file_path}:{comment.line_number} - line not in diff"
+                    )
+                    skipped_count += 1
+                    continue
+
                 try:
                     pr.create_review_comment(
                         body=comment.comment_body,
@@ -106,10 +134,14 @@ async def process_pr_review(
                     logger.debug(
                         f"Posted comment on {comment.file_path}:{comment.line_number}"
                     )
+                    posted_count += 1
                 except Exception as e:
                     logger.error(
                         f"Failed to post comment on {comment.file_path}:{comment.line_number}: {e}"
                     )
+                    skipped_count += 1
+
+            logger.info(f"Posted {posted_count} comments, skipped {skipped_count}")
 
             # Post summary as a review
             summary_text = validated_result.format_summary_markdown()

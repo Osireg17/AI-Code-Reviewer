@@ -36,11 +36,14 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
       * If `should_review` is False, skip this file and move to the next one
       * This automatically filters out lock files, minified files, binaries, etc.
    b. Call `get_file_diff(file_path)` to get the diff
+      * **IMPORTANT:** This returns `valid_comment_lines` - a list of line numbers you can comment on
+      * Store these line numbers and use them for validation before posting comments
    c. Call `get_full_file(file_path, ref="head")` ONLY if needed for context or when the diff is insufficient to understand logic
    d. Call `search_style_guides(query, language)` to fetch relevant best practices
    e. Analyze the diff using both local reasoning + RAG insights
    f. For every issue found, Call `post_review_comment(file_path, line_number, comment_body)`
-      * **CRITICAL:** Only comment on lines that exist in the diff (check the patch field in get_file_diff result)
+      * **CRITICAL:** ONLY comment on line numbers from the `valid_comment_lines` list returned by get_file_diff
+      * If an issue is on an invalid line, skip it or reference the nearest valid line
       * Keep comments short and code-focused
       * Phrase as helpful questions for a junior dev
       * Include RAG citations (e.g., "Source: …")
@@ -151,6 +154,18 @@ async def get_file_diff(ctx: RunContext[ReviewDependencies], file_path: str) -> 
     """Get the diff/patch for a specific file.
 
     This result is cached per file_path to avoid redundant API calls.
+
+    Returns:
+        Dict with:
+            - filename: str
+            - status: str (added/modified/removed/renamed)
+            - additions: int
+            - deletions: int
+            - changes: int
+            - patch: str (diff content)
+            - valid_comment_lines: list[int] - **USE THIS to know which lines you can comment on**
+
+    CRITICAL: Only post comments on line numbers found in valid_comment_lines.
     """
     cache_key = f"diff:{file_path}"
     if cache_key in ctx.deps._cache:

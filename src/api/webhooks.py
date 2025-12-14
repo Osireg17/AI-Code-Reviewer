@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from github import Auth, Github
 
-from src.agents.code_reviewer import code_review_agent
+from src.agents.code_reviewer import code_review_agent, validate_review_result
 from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.services.github_auth import github_app_auth
@@ -72,18 +72,58 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
             pr.create_issue_comment(body=progress_message)
             logger.info(f"Posted 'review in progress' comment for PR #{pr_number}")
 
-            # Run the code review agent
-            # The agent will post comments directly via tools, no structured output
+            # Run the code review agent with structured output
             logger.info(f"Running AI code review for PR #{pr_number}")
-            await code_review_agent.run(
+            result = await code_review_agent.run(
                 user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
-                f"Analyze the changes and provide constructive feedback. "
-                f"Remember to call post_review_comment() for each issue you find, "
-                f"then call post_summary_comment() at the end with your overall assessment.",
+                f"Analyze the changes and provide constructive feedback.",
                 deps=deps,
             )
 
-            logger.info(f"Review completed for {review_key}")
+            # Validate the result
+            validated_result = validate_review_result(
+                repo_full_name=repo_name,
+                pr_number=pr_number,
+                result=result.output,
+            )
+
+            # Post all inline comments to GitHub
+            logger.info(f"Posting {len(validated_result.comments)} inline comments")
+            for comment in validated_result.comments:
+                try:
+                    pr.create_review_comment(
+                        body=comment.comment_body,
+                        commit=pr.head.sha,
+                        path=comment.file_path,
+                        line=comment.line_number,
+                    )
+                    logger.debug(
+                        f"Posted comment on {comment.file_path}:{comment.line_number}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to post comment on {comment.file_path}:{comment.line_number}: {e}"
+                    )
+
+            # Post summary as a review
+            summary_text = validated_result.format_summary_markdown()
+            approval_status_map = {
+                "approve": "APPROVE",
+                "request_changes": "REQUEST_CHANGES",
+                "comment": "COMMENT",
+            }
+            approval_status = approval_status_map.get(
+                validated_result.summary.recommendation, "COMMENT"
+            )
+
+            pr.create_review(body=summary_text, event=approval_status)
+            logger.info(f"Posted summary review with status: {approval_status}")
+
+            logger.info(
+                f"Review completed for {review_key}: "
+                f"{validated_result.total_comments} comments, "
+                f"recommendation: {validated_result.summary.recommendation}"
+            )
 
     except Exception as e:
         logger.error(f"Error processing review for {review_key}: {e}", exc_info=True)

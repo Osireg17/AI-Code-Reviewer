@@ -89,11 +89,12 @@ SYSTEM_PROMPT = """**Role:** Staff Engineer reviewing pull requests
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-# Create the code review agent without structured output
-# The agent will call post_review_comment() and post_summary_comment() directly
+# Create the code review agent with structured output
+# Post-processing will handle posting comments to GitHub
 code_review_agent = Agent(
     model=f"openai:{settings.openai_model}",
     deps_type=ReviewDependencies,
+    output_type=CodeReviewResult,
     system_prompt=SYSTEM_PROMPT,
     retries=settings.max_retries,
 )

@@ -67,7 +67,7 @@ async def process_pr_review(
             )
 
             # Post initial "review in progress" comment only on PR open/reopen, not on new commits
-            if action in ["opened", "reopened"]:
+            if action in {"opened", "reopened"}:
                 bot_name = settings.bot_name
                 progress_message = (
                     f"🤖 **{bot_name}** is currently reviewing your PR...\n\n"
@@ -93,55 +93,57 @@ async def process_pr_review(
                 result=result.output,
             )
 
-            # Post all inline comments to GitHub
-            logger.info(f"Posting {len(validated_result.comments)} inline comments")
+            if inline_comments_already_posted := deps._cache.get(  # noqa: F841
+                "inline_comments_posted", False
+            ):
+                logger.info(
+                    "Inline comments already posted by agent; skipping webhook inline posts"
+                )
+            else:
+                logger.info(f"Posting {len(validated_result.comments)} inline comments")
 
-            # Build a cache of valid line numbers per file for validation
-            files_cache = {}
-            for file in pr.get_files():
-                files_cache[file.filename] = file.patch
+                files_cache = {file.filename: file.patch for file in pr.get_files()}
+                posted_count = 0
+                skipped_count = 0
 
-            posted_count = 0
-            skipped_count = 0
+                for comment in validated_result.comments:
+                    # Validate line number is in the diff before posting
+                    file_patch = files_cache.get(comment.file_path)
+                    if not file_patch:
+                        logger.warning(
+                            f"Skipping comment on {comment.file_path}:{comment.line_number} - file not found in PR"
+                        )
+                        skipped_count += 1
+                        continue
 
-            for comment in validated_result.comments:
-                # Validate line number is in the diff before posting
-                file_patch = files_cache.get(comment.file_path)
-                if not file_patch:
-                    logger.warning(
-                        f"Skipping comment on {comment.file_path}:{comment.line_number} - file not found in PR"
-                    )
-                    skipped_count += 1
-                    continue
+                    # Check if line is valid for commenting
+                    from src.tools.github_tools import _is_line_in_diff
 
-                # Check if line is valid for commenting
-                from src.tools.github_tools import _is_line_in_diff
+                    if not _is_line_in_diff(file_patch, comment.line_number):
+                        logger.warning(
+                            f"Skipping comment on {comment.file_path}:{comment.line_number} - line not in diff"
+                        )
+                        skipped_count += 1
+                        continue
 
-                if not _is_line_in_diff(file_patch, comment.line_number):
-                    logger.warning(
-                        f"Skipping comment on {comment.file_path}:{comment.line_number} - line not in diff"
-                    )
-                    skipped_count += 1
-                    continue
+                    try:
+                        pr.create_review_comment(
+                            body=comment.comment_body,
+                            commit=pr.head.sha,
+                            path=comment.file_path,
+                            line=comment.line_number,
+                        )
+                        logger.debug(
+                            f"Posted comment on {comment.file_path}:{comment.line_number}"
+                        )
+                        posted_count += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to post comment on {comment.file_path}:{comment.line_number}: {e}"
+                        )
+                        skipped_count += 1
 
-                try:
-                    pr.create_review_comment(
-                        body=comment.comment_body,
-                        commit=pr.head.sha,
-                        path=comment.file_path,
-                        line=comment.line_number,
-                    )
-                    logger.debug(
-                        f"Posted comment on {comment.file_path}:{comment.line_number}"
-                    )
-                    posted_count += 1
-                except Exception as e:
-                    logger.error(
-                        f"Failed to post comment on {comment.file_path}:{comment.line_number}: {e}"
-                    )
-                    skipped_count += 1
-
-            logger.info(f"Posted {posted_count} comments, skipped {skipped_count}")
+                logger.info(f"Posted {posted_count} comments, skipped {skipped_count}")
 
             # Post summary as a review
             summary_text = validated_result.format_summary_markdown()
@@ -211,7 +213,7 @@ async def validate_signature(
             detail="Webhook secret not configured",
         )
     secret = webhook_secret.encode("utf-8")
-    expected_signature = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
+    expected_signature = f"sha256={hmac.new(secret, body, hashlib.sha256).hexdigest()}"
 
     # Compare signatures securely
     if not hmac.compare_digest(expected_signature, x_hub_signature_256):

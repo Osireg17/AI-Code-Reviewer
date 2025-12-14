@@ -403,6 +403,9 @@ async def post_review_comment(
         body=comment_body, commit=latest_commit, path=file_path, line=line_number
     )
 
+    # Mark that inline comments were posted by the agent to avoid duplicate webhook posts
+    ctx.deps._cache["inline_comments_posted"] = True
+
     logger.info(f"Posted review comment on {file_path}:{line_number}")
     return f"Posted comment on {file_path}:{line_number}"
 

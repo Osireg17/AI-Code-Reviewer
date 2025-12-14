@@ -30,6 +30,27 @@
   document_type: reference
   url: null
 
+- file_path: Python/Fluent_Python.pdf
+  language: python
+  namespace: python
+  source: fluent-python
+  document_type: best_practices
+  url: null
+
+- file_path: Python/Effective_Python.pdf
+  language: python
+  namespace: python
+  source: effective-python
+  document_type: best_practices
+  url: null
+
+- file_path: Python/Practices_of_the_Python Pro.pdf
+  language: python
+  namespace: python
+  source: python-pro-practices
+  document_type: best_practices
+  url: null
+
 # JavaScript Documents
 - file_path: JavaScript/Airbnb-JavaScript-Coding-Convention.pdf
   language: javascript
@@ -52,6 +73,27 @@
   document_type: reference
   url: null
 
+- file_path: JavaScript/Eloquent_JavaScript_small.pdf
+  language: javascript
+  namespace: javascript
+  source: eloquent-javascript
+  document_type: reference
+  url: null
+
+- file_path: JavaScript/JavaScript_for_Web_Developers.pdf
+  language: javascript
+  namespace: javascript
+  source: js-web-developers
+  document_type: reference
+  url: null
+
+- file_path: JavaScript/JavaScript_from_Beginner_to_Professional.pdf
+  language: javascript
+  namespace: javascript
+  source: js-beginner-to-professional
+  document_type: reference
+  url: null
+
 # TypeScript Documents
 - file_path: TypeScript/Google TypeScript Style Guide.pdf
   language: typescript
@@ -60,11 +102,39 @@
   document_type: style_guide
   url: https://google.github.io/styleguide/tsguide.html
 
-- file_path: TypeScript/books-library.net-10121904Qa5D8.pdf
+- file_path: TypeScript/TypeScript_handbook.pdf
   language: typescript
   namespace: typescript
-  source: typescript-book
+  source: typescript-handbook
   document_type: reference
+  url: https://www.typescriptlang.org/docs/handbook/intro.html
+
+- file_path: TypeScript/TypeScript_Style_Guide.pdf
+  language: typescript
+  namespace: typescript
+  source: typescript-style-guide
+  document_type: style_guide
+  url: null
+
+- file_path: TypeScript/Programming_TypeScript.pdf
+  language: typescript
+  namespace: typescript
+  source: programming-typescript
+  document_type: best_practices
+  url: null
+
+- file_path: TypeScript/Exploring_TypeScript.pdf
+  language: typescript
+  namespace: typescript
+  source: exploring-typescript
+  document_type: reference
+  url: null
+
+- file_path: TypeScript/Pro_TypeScript.pdf
+  language: typescript
+  namespace: typescript
+  source: pro-typescript
+  document_type: best_practices
   url: null
 
 # Go Documents
@@ -103,6 +173,27 @@
   document_type: style_guide
   url: https://github.com/uber-go/guide/blob/master/style.md
 
+- file_path: Go/Get_Programming_with_Go.pdf
+  language: go
+  namespace: go
+  source: get-programming-go
+  document_type: reference
+  url: null
+
+- file_path: Go/System_Programming_Essentials_with_Go_System_calls,_networking,.pdf
+  language: go
+  namespace: go
+  source: go-system-programming
+  document_type: reference
+  url: null
+
+- file_path: Go/how-to-code-in-go.pdf
+  language: go
+  namespace: go
+  source: how-to-code-go
+  document_type: reference
+  url: null
+
 # Java Documents
 - file_path: Java/Google Java Style Guide.pdf
   language: java
@@ -125,6 +216,20 @@
   document_type: style_guide
   url: https://www.oracle.com/java/technologies/javase/codeconventions-contents.html
 
+- file_path: Java/Introduction_to_Programming_Using_Java.pdf
+  language: java
+  namespace: java
+  source: intro-java
+  document_type: reference
+  url: null
+
+- file_path: Java/Microservices_Best_Practices_for_Java.pdf
+  language: java
+  namespace: java
+  source: java-microservices
+  document_type: best_practices
+  url: null
+
 # C++ Documents
 - file_path: C++/Google C++ Style Guide.pdf
   language: cpp
@@ -132,6 +237,34 @@
   source: google-cpp
   document_type: style_guide
   url: https://google.github.io/styleguide/cppguide.html
+
+- file_path: C++/Clean_C++.pdf
+  language: cpp
+  namespace: cpp
+  source: clean-cpp
+  document_type: best_practices
+  url: null
+
+- file_path: C++/Effective_C++_3rd_Edition_by_Scott_Meyers.pdf
+  language: cpp
+  namespace: cpp
+  source: effective-cpp
+  document_type: best_practices
+  url: null
+
+- file_path: C++/Secure_Coding_in_C_and_C++.pdf
+  language: cpp
+  namespace: cpp
+  source: secure-cpp
+  document_type: security
+  url: null
+
+- file_path: C++/optimizing_cpp.pdf
+  language: cpp
+  namespace: cpp
+  source: optimizing-cpp
+  document_type: best_practices
+  url: null
 
 # Cross-Language Documents (Security, Design Patterns, Clean Code)
 - file_path: Cross-Language/OWASP_SCP_Quick_Reference_Guide_v21.pdf
@@ -153,4 +286,25 @@
   namespace: cross-language
   source: design-patterns
   document_type: best_practices
+  url: null
+
+- file_path: Cross-Language/Software-Engineering-9th-Edition-by-Ian-Sommerville.pdf
+  language: cross-language
+  namespace: cross-language
+  source: software-engineering-sommerville
+  document_type: reference
+  url: null
+
+- file_path: Cross-Language/Software_Engineering.pdf
+  language: cross-language
+  namespace: cross-language
+  source: software-engineering
+  document_type: reference
+  url: null
+
+- file_path: Cross-Language/Software_Engineering_Principles_and_Practice.pdf
+  language: cross-language
+  namespace: cross-language
+  source: software-engineering-principles
+  document_type: reference
   url: null

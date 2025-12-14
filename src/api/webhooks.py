@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -28,7 +29,13 @@ _active_reviews: set[str] = set()
 
 
 async def process_pr_review(
-    repo_name: str, pr_number: int, action: str = "opened"
+    repo_name: str,
+    pr_number: int,
+    action: str = "opened",
+    session_factory: Callable[[], Session] | None = None,
+    github_auth: Any = None,  # GitHubAppAuth | None (using Any to avoid type errors with proxy)
+    agent: Any = None,
+    active_reviews: set[str] | None = None,
 ) -> None:
     """Process PR review in the background.
 
@@ -36,18 +43,32 @@ async def process_pr_review(
         repo_name: Repository full name (owner/repo)
         pr_number: Pull request number
         action: PR event action (opened, reopened, synchronize)
+        session_factory: Database session factory (default: SessionLocal)
+        github_auth: GitHub App authentication service (default: github_app_auth)
+        agent: Code review agent (default: code_review_agent)
+        active_reviews: Set of active review keys for deduplication (default: _active_reviews)
     """
+    # Apply defaults for dependency injection
+    if active_reviews is None:
+        active_reviews = _active_reviews
+    if session_factory is None:
+        session_factory = SessionLocal
+    if github_auth is None:
+        github_auth = github_app_auth
+    if agent is None:
+        agent = code_review_agent
+
     review_key = f"{repo_name}#{pr_number}"
 
-    if review_key in _active_reviews:
+    if review_key in active_reviews:
         logger.warning(f"Review already in progress for {review_key}, skipping")
         return
 
-    db = SessionLocal()
-    _active_reviews.add(review_key)
+    db = session_factory()
+    active_reviews.add(review_key)
     try:
         logger.info(f"Starting background review for {review_key}")
-        installation_token = await github_app_auth.get_installation_access_token()
+        installation_token = await github_auth.get_installation_access_token()
         auth = Auth.Token(installation_token)
         github_client = Github(auth=auth)
 
@@ -71,7 +92,9 @@ async def process_pr_review(
                 base_commit_sha=base_commit_sha,
             )
             await _post_progress_comment_if_needed(pr, action)
-            validated_result = await _run_code_review_agent(repo_name, pr_number, deps)
+            validated_result = await _run_code_review_agent(
+                repo_name, pr_number, deps, agent
+            )
             await _post_inline_comments_if_needed(pr, validated_result, deps)
             await _post_summary_review_if_needed(
                 pr, validated_result, deps, is_incremental
@@ -85,7 +108,7 @@ async def process_pr_review(
                 f"recommendation: {validated_result.summary.recommendation}"
             )
     finally:
-        _active_reviews.discard(review_key)
+        active_reviews.discard(review_key)
         db.close()
 
 
@@ -133,11 +156,22 @@ async def _post_progress_comment_if_needed(pr: PullRequest, action: str) -> None
 
 
 async def _run_code_review_agent(
-    repo_name: str, pr_number: int, deps: ReviewDependencies
+    repo_name: str, pr_number: int, deps: ReviewDependencies, agent: Any
 ) -> CodeReviewResult:
+    """Run the code review agent with the given dependencies.
+
+    Args:
+        repo_name: Repository full name
+        pr_number: Pull request number
+        deps: Review dependencies
+        agent: Code review agent instance
+
+    Returns:
+        Validated code review result
+    """
     logger.info(f"Running AI code review for PR #{pr_number}")
     result: Any = await with_exponential_backoff(
-        code_review_agent.run,
+        agent.run,
         user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
         f"Analyze the changes and provide constructive feedback.",
         deps=deps,

@@ -21,12 +21,15 @@ router = APIRouter(prefix="/webhook", tags=["webhooks"])
 _active_reviews: set[str] = set()
 
 
-async def process_pr_review(repo_name: str, pr_number: int) -> None:
+async def process_pr_review(
+    repo_name: str, pr_number: int, action: str = "opened"
+) -> None:
     """Process PR review in the background.
 
     Args:
         repo_name: Repository full name (owner/repo)
         pr_number: Pull request number
+        action: PR event action (opened, reopened, synchronize)
     """
     review_key = f"{repo_name}#{pr_number}"
 
@@ -63,14 +66,17 @@ async def process_pr_review(repo_name: str, pr_number: int) -> None:
                 pr=pr,
             )
 
-            # Post initial "review in progress" comment
-            bot_name = settings.bot_name
-            progress_message = (
-                f"🤖 **{bot_name}** is currently reviewing your PR...\n\n"
-                f"I'll post detailed feedback shortly. Thanks for your patience!"
-            )
-            pr.create_issue_comment(body=progress_message)
-            logger.info(f"Posted 'review in progress' comment for PR #{pr_number}")
+            # Post initial "review in progress" comment only on PR open/reopen, not on new commits
+            if action in ["opened", "reopened"]:
+                bot_name = settings.bot_name
+                progress_message = (
+                    f"🤖 **{bot_name}** is currently reviewing your PR...\n\n"
+                    f"I'll post detailed feedback shortly. Thanks for your patience!"
+                )
+                pr.create_issue_comment(body=progress_message)
+                logger.info(f"Posted 'review in progress' comment for PR #{pr_number}")
+            else:
+                logger.debug(f"Skipping progress comment for '{action}' event")
 
             # Run the code review agent with structured output
             logger.info(f"Running AI code review for PR #{pr_number}")
@@ -231,10 +237,12 @@ async def github_webhook(
                     "status": "duplicate",
                 }
 
-            # Add background task to process review
-            background_tasks.add_task(process_pr_review, repo_name, pr_number)
+            # Add background task to process review (pass action to control progress comment)
+            background_tasks.add_task(process_pr_review, repo_name, pr_number, action)
 
-            logger.info(f"Queued background review for PR #{pr_number}")
+            logger.info(
+                f"Queued background review for PR #{pr_number} (action: {action})"
+            )
             return {
                 "message": f"PR #{pr_number} review queued",
                 "status": "accepted",

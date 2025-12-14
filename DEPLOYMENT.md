@@ -49,7 +49,7 @@ GITHUB_TOKEN=ghp_...your-github-personal-access-token
 GITHUB_WEBHOOK_SECRET=...your-generated-secret-from-step-2
 
 # Optional Variables (with defaults)
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-4.1-nano
 DEBUG=False
 LOG_LEVEL=INFO
 ENVIRONMENT=production

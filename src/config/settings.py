@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(
         default=None, description="OpenAI API key for AI models"
     )
-    openai_model: str = Field(default="gpt-5-mini", description="OpenAI model to use")
+    openai_model: str = Field(default="gpt-4.1-nano", description="OpenAI model to use")
 
     # GitHub Configuration
     # Note: GitHub Actions doesn't allow env var names starting with GITHUB_
@@ -93,7 +93,9 @@ class Settings(BaseSettings):
     )
 
     # Server Configuration
-    host: str = Field(default="0.0.0.0", description="Server host")
+    # Use a localhost default to avoid binding to all interfaces.
+    # Override via env (e.g., HOST=0.0.0.0) only when needed (containers/proxies).
+    host: str = Field(default="127.0.0.1", description="Server host")
     port: int = Field(default=8000, description="Server port")
 
     # Pinecone Configuration

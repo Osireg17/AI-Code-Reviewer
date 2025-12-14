@@ -135,7 +135,7 @@ python scripts/test_github_app_auth.py
 **Required (local):**
 ```bash
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-4.1-nano
 
 GITHUB_APP_ID=123456
 GITHUB_APP_INSTALLATION_ID=987654

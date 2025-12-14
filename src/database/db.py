@@ -38,19 +38,12 @@ def get_db() -> Generator[Session, None, None]:
     """
     FastAPI dependency for database sessions.
 
-    Provides a database session that automatically commits on success
-    and rolls back on exceptions.
-
-    Usage:
-        @app.post("/endpoint")
-        def endpoint(db: Session = Depends(get_db)):
-            # Use db here
-            pass
+    Provides a database session.
+    Note: The caller is responsible for committing changes (db.commit()).
     """
     db = SessionLocal()
     try:
         yield db
-        db.commit()
     except Exception:
         db.rollback()
         raise

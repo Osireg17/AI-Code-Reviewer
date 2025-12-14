@@ -110,6 +110,12 @@ class Settings(BaseSettings):
         description="Pinecone index name for RAG knowledge base",
     )
 
+    # Database Configuration
+    database_url: str = Field(
+        default="postgresql://postgres:password@localhost:5432/ai_code_reviewer_dev",  # pragma: allowlist secret
+        description="PostgreSQL database URL (required). Use private URL (postgres.railway.internal) in Railway, public URL for local dev",
+    )
+
     # RAG Configuration
     rag_enabled: bool = Field(default=True, description="Enable RAG style guide search")
     embedding_model: str = Field(

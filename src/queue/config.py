@@ -52,10 +52,12 @@ def _job_id(repo_name: str, pr_number: int) -> str:
     return f"review:{repo_name}#{pr_number}"
 
 
-def _get_queue(action: str) -> Queue:
-    """Return the queue associated with the action priority."""
-    priority = PRIORITY_MAPPING.get(action, DEFAULT_PRIORITY)
-    return _queues.get(priority, review_queue)
+def _get_queue(action: str, priority: str | None = None) -> Queue:
+    """Return the queue associated with the action priority or explicit override."""
+    if priority and priority in _queues:
+        return _queues[priority]
+    mapped_priority = PRIORITY_MAPPING.get(action, DEFAULT_PRIORITY)
+    return _queues.get(mapped_priority, review_queue)
 
 
 def _fetch_existing_job(job_id: str) -> Job | None:
@@ -78,15 +80,17 @@ def run_review_job(repo_name: str, pr_number: int, action: str = "opened") -> No
     logger.info("Finished review job for %s#%s", repo_name, pr_number)
 
 
-def enqueue_review(repo_name: str, pr_number: int, action: str = "opened") -> Job:
+def enqueue_review(
+    repo_name: str, pr_number: int, action: str = "opened", priority: str | None = None
+) -> Job:
     """Enqueue a PR review job with deduplication, priority, retries, and timeout.
 
     - Deduplicates by repo/pr pair using a deterministic job id.
-    - Routes jobs to priority queues based on the incoming action.
+    - Routes jobs to priority queues based on the incoming action or override.
     - Applies a 10 minute timeout and 3 total attempts (2 retries).
     """
     job_id = _job_id(repo_name, pr_number)
-    queue = _get_queue(action)
+    queue = _get_queue(action, priority)
 
     # Deduplicate across queue/worker restarts
     existing_job = _fetch_existing_job(job_id)
@@ -102,11 +106,12 @@ def enqueue_review(repo_name: str, pr_number: int, action: str = "opened") -> Jo
             return existing_job
 
     logger.info(
-        "Enqueuing review job for %s#%s on queue '%s' (action=%s)",
+        "Enqueuing review job for %s#%s on queue '%s' (action=%s, priority=%s)",
         repo_name,
         pr_number,
         queue.name,
         action,
+        priority or "mapped",
     )
     job = queue.enqueue(
         run_review_job,

@@ -1,6 +1,6 @@
 [project]
 name = "ai-code-reviewer"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-powered GitHub PR code review agent using Pydantic AI and OpenAI"
 requires-python = ">=3.10"
 authors = [
@@ -8,7 +8,6 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "MIT"}
-
 dependencies = [
     "pydantic-ai[openai,logfire]>=0.0.1",
     "fastapi>=0.115.0",
@@ -20,6 +19,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyjwt[crypto]>=2.9.0",
     "logfire[fastapi]>=0.1.0",
+    "redis>=5.0.0",
+    "rq>=1.16.0",
     # RAG Knowledge Base
     "langchain>=0.3.0",
     "langchain-openai>=0.2.0",

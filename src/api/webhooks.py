@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 from github import Auth, Github
 from github.PullRequest import PullRequest
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from src.database.db import SessionLocal
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.models.review_state import ReviewState
+from src.queue.config import enqueue_review
 from src.services.github_auth import github_app_auth
 from src.utils.rate_limiter import with_exponential_backoff
 
@@ -329,7 +330,6 @@ async def validate_signature(
 
 @router.post("/github")
 async def github_webhook(
-    background_tasks: BackgroundTasks,
     request: Request,
     x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
@@ -403,8 +403,35 @@ async def github_webhook(
                     "status": "duplicate",
                 }
 
-            # Add background task to process review (pass action to control progress comment)
-            background_tasks.add_task(process_pr_review, repo_name, pr_number, action)
+            labels = payload.get("pull_request", {}).get("labels", []) or []
+            label_names = [label.get("name", "").lower() for label in labels]
+            changed_files = payload.get("pull_request", {}).get("changed_files")
+
+            priority: str | None
+            if any(
+                keyword in name
+                for name in label_names
+                for keyword in ("critical", "security")
+            ):
+                priority = "high"
+            elif isinstance(changed_files, int) and changed_files > 20:
+                priority = "low"
+            else:
+                priority = "default"
+
+            try:
+                job = enqueue_review(repo_name, pr_number, action, priority=priority)
+            except Exception as exc:  # pragma: no cover - defensive guard
+                logger.exception(
+                    "Failed to enqueue review job for %s#%s (action=%s)",
+                    repo_name,
+                    pr_number,
+                    action,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to enqueue review job: {exc}",
+                ) from exc
 
             logger.info(
                 f"Queued background review for PR #{pr_number} (action: {action})"
@@ -412,6 +439,7 @@ async def github_webhook(
             return {
                 "message": f"PR #{pr_number} review queued",
                 "status": "accepted",
+                "job_id": job.id,
             }
         else:
             logger.info(f"Ignoring PR {action} event")

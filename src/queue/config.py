@@ -56,9 +56,15 @@ def get_all_queues() -> list[Queue]:
     return list(_queues.values())
 
 
+def _sanitize_repo(repo_name: str) -> str:
+    """Return a Redis-safe repo identifier for job ids (Redis keys disallow ':')."""
+    return repo_name.replace(":", "-").replace("/", "__")
+
+
 def _job_id(repo_name: str, pr_number: int) -> str:
     """Build a deterministic job id for deduplication across workers."""
-    return f"review:{repo_name}#{pr_number}"
+    safe_repo = _sanitize_repo(repo_name)
+    return f"review-{safe_repo}-pr-{pr_number}"
 
 
 def _get_queue(action: str, priority: str | None = None) -> Queue:

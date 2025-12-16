@@ -27,14 +27,14 @@ def test_start_worker_uses_configured_queues(monkeypatch):
     monkeypatch.setattr(worker, "setup_observability", fake_setup_observability)
 
     class DummyWorker:
-        def __init__(self, queues, connection=None, name=None, default_worker_ttl=None):
+        def __init__(self, queues, connection=None, name=None, worker_ttl=None, **_):
             self.queues = queues
             self.connection = connection
             self.name = name
-            self.default_worker_ttl = default_worker_ttl
+            self.worker_ttl = worker_ttl
             self.work_called = False
             captured["worker_name"] = name
-            captured["ttl"] = default_worker_ttl
+            captured["ttl"] = worker_ttl
 
         def work(self, with_scheduler=True, logging_level=None):
             self.work_called = True

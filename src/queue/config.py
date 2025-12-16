@@ -16,7 +16,7 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 # Default queue and retry configuration
-JOB_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+JOB_TIMEOUT_SECONDS = settings.worker_job_timeout
 # RQ's Retry.max is the number of retries in addition to the first attempt.
 MAX_ATTEMPTS = 3
 RETRY_STRATEGY = Retry(max=MAX_ATTEMPTS - 1, interval=[30, 90, 180])
@@ -36,6 +36,7 @@ redis_connection = Redis(
     password=settings.redis_password,
     socket_timeout=5,
 )
+redis_conn = redis_connection  # alias for worker script imports
 
 # Create queues per priority lane; fall back to default when unmapped
 _queues: dict[str, Queue] = {}
@@ -45,6 +46,11 @@ for priority in {DEFAULT_PRIORITY, *PRIORITY_MAPPING.values()}:
 
 # Default queue export for callers that do not need priority control
 review_queue = _queues[DEFAULT_PRIORITY]
+
+
+def get_all_queues() -> list[Queue]:
+    """Return all configured queues (one per priority lane)."""
+    return list(_queues.values())
 
 
 def _job_id(repo_name: str, pr_number: int) -> str:

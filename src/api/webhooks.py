@@ -25,9 +25,6 @@ from src.utils.rate_limiter import with_exponential_backoff
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
 
-# Track in-progress reviews to prevent duplicates
-_active_reviews: set[str] = set()
-
 
 async def process_pr_review(
     repo_name: str,
@@ -36,9 +33,8 @@ async def process_pr_review(
     session_factory: Callable[[], Session] | None = None,
     github_auth: Any = None,  # GitHubAppAuth | None (using Any to avoid type errors with proxy)
     agent: Any = None,
-    active_reviews: set[str] | None = None,
 ) -> None:
-    """Process PR review in the background.
+    """Process a PR review job (executed by queue workers).
 
     Args:
         repo_name: Repository full name (owner/repo)
@@ -47,11 +43,9 @@ async def process_pr_review(
         session_factory: Database session factory (default: SessionLocal)
         github_auth: GitHub App authentication service (default: github_app_auth)
         agent: Code review agent (default: code_review_agent)
-        active_reviews: Set of active review keys for deduplication (default: _active_reviews)
+            Queue layer performs deduplication via deterministic job_id.
     """
     # Apply defaults for dependency injection
-    if active_reviews is None:
-        active_reviews = _active_reviews
     if session_factory is None:
         session_factory = SessionLocal
     if github_auth is None:
@@ -61,21 +55,16 @@ async def process_pr_review(
 
     review_key = f"{repo_name}#{pr_number}"
 
-    if review_key in active_reviews:
-        logger.warning(f"Review already in progress for {review_key}, skipping")
-        return
-
     db = session_factory()
-    active_reviews.add(review_key)
+    logger.info("Starting review job for %s (action=%s)", review_key, action)
     try:
-        logger.info(f"Starting background review for {review_key}")
         installation_token = await github_auth.get_installation_access_token()
         auth = Auth.Token(installation_token)
         github_client = Github(auth=auth)
+        repo = github_client.get_repo(repo_name)
+        pr = repo.get_pull(pr_number)
 
         async with httpx.AsyncClient(timeout=30.0) as http_client:
-            repo = github_client.get_repo(repo_name)
-            pr = repo.get_pull(pr_number)
             (
                 is_incremental,
                 base_commit_sha,
@@ -109,8 +98,8 @@ async def process_pr_review(
                 f"recommendation: {validated_result.summary.recommendation}"
             )
     finally:
-        active_reviews.discard(review_key)
         db.close()
+        logger.info("Finished review job for %s", review_key)
 
 
 async def _determine_review_type(
@@ -370,12 +359,8 @@ async def github_webhook(
             f"Received PR {action} event for PR #{pr_number} in {repo_name} (state: {pr_state})"
         )
 
-        # Handle closed/merged PRs - clean up active reviews
+        # Handle closed/merged PRs - nothing to queue
         if action == "closed":
-            review_key = f"{repo_name}#{pr_number}"
-            if review_key in _active_reviews:
-                _active_reviews.discard(review_key)
-                logger.info(f"Removed {review_key} from active reviews (PR closed)")
             return {
                 "message": f"PR #{pr_number} closed, cleaned up",
                 "status": "closed",
@@ -391,18 +376,6 @@ async def github_webhook(
 
         # Only process opened, reopened, and synchronize events
         if action in ["opened", "reopened", "synchronize"]:
-            review_key = f"{repo_name}#{pr_number}"
-
-            # Check if already processing (deduplication)
-            if review_key in _active_reviews:
-                logger.info(
-                    f"Review already in progress for {review_key}, ignoring duplicate"
-                )
-                return {
-                    "message": f"PR #{pr_number} review already in progress",
-                    "status": "duplicate",
-                }
-
             labels = payload.get("pull_request", {}).get("labels", []) or []
             label_names = [label.get("name", "").lower() for label in labels]
             changed_files = payload.get("pull_request", {}).get("changed_files")

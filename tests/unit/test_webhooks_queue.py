@@ -14,7 +14,6 @@ def _signature(secret: str, body: bytes) -> str:
 def test_github_webhook_enqueues_job_and_returns_id(monkeypatch, client, webhook_url):
     secret = "test-secret"  # pragma: allowlist secret
     monkeypatch.setattr(webhooks.settings, "github_webhook_secret", secret)
-    monkeypatch.setattr(webhooks, "_active_reviews", set())
 
     captured: dict[str, object] = {}
     dummy_job = SimpleNamespace(id="job-123")

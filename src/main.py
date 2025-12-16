@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from rq import Worker
 
 from src.api import webhooks
 from src.config.settings import settings
 from src.database.db import check_db_connection, init_db
+from src.queue.config import redis_conn, review_queue
 from src.utils.logging import setup_observability
 
 # Setup logging and observability
@@ -65,8 +67,18 @@ app.include_router(webhooks.router)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str | bool]:
+async def health_check() -> dict[str, str | bool | int]:
     """Health check endpoint with configuration status."""
+    redis_connected = False
+    queue_size = 0
+    active_workers = 0
+    try:
+        redis_connected = bool(redis_conn.ping())
+        queue_size = review_queue.count
+        active_workers = len(Worker.all(connection=redis_conn))
+    except Exception:
+        logger.exception("Health check: failed to query Redis/queue state")
+
     return {
         "status": "healthy",
         "environment": settings.environment,
@@ -75,6 +87,9 @@ async def health_check() -> dict[str, str | bool]:
         "openai_configured": bool(settings.openai_api_key),
         "logfire_enabled": bool(settings.logfire_token),
         "webhook_secret_configured": bool(settings.github_webhook_secret),
+        "redis_connected": redis_connected,
+        "queue_size": queue_size,
+        "active_workers": active_workers,
     }
 
 

@@ -60,6 +60,10 @@ tmp/
 temp/
 *.tmp
 
+# Application runtime files (keep in image)
+!worker.py
+!entrypoint.sh
+
 # Private keys (should be in env vars for production)
 *.pem
 *.key

@@ -10,6 +10,11 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from github import Auth, Github
 from github.PullRequest import PullRequest
+from redis.exceptions import ConnectionError as RedisConnectionError
+from rq import Worker
+from rq.exceptions import NoSuchJobError
+from rq.job import Job
+from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 from sqlalchemy.orm import Session
 
 from src.agents.code_reviewer import code_review_agent, validate_review_result
@@ -18,12 +23,59 @@ from src.database.db import SessionLocal
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.models.review_state import ReviewState
-from src.queue.config import enqueue_review
+from src.queue.config import enqueue_review, redis_conn, review_queue
 from src.services.github_auth import github_app_auth
 from src.utils.rate_limiter import with_exponential_backoff
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhooks"])
+
+
+@router.get("/queue/status")
+async def queue_status() -> dict[str, int]:
+    """Return aggregate queue metrics."""
+    queued_jobs = review_queue.count
+    started_registry = StartedJobRegistry(queue=review_queue)
+    finished_registry = FinishedJobRegistry(queue=review_queue)
+    failed_registry = FailedJobRegistry(queue=review_queue)
+    active_workers = len(Worker.all(connection=redis_conn))
+
+    return {
+        "queued": queued_jobs,
+        "started": len(started_registry),
+        "finished": len(finished_registry),
+        "failed": len(failed_registry),
+        "active_workers": active_workers,
+    }
+
+
+@router.get("/queue/job/{job_id}")
+async def queue_job(job_id: str) -> dict[str, Any]:
+    """Return details for a specific queued job."""
+    try:
+        job = Job.fetch(job_id, connection=redis_conn)
+    except NoSuchJobError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        ) from err
+
+    status_value = job.get_status(refresh=True)
+    latest_result = job.latest_result()
+    latest_return = (
+        getattr(latest_result, "return_value", None) if latest_result else None
+    )
+    latest_traceback = (
+        getattr(latest_result, "exc_string", None) if latest_result else None
+    )
+    return {
+        "job_id": job.id,
+        "status": status_value,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "ended_at": job.ended_at.isoformat() if job.ended_at else None,
+        "result": latest_return if status_value == "finished" else None,
+        "exc_info": latest_traceback if status_value == "failed" else None,
+    }
 
 
 async def process_pr_review(
@@ -394,6 +446,17 @@ async def github_webhook(
 
             try:
                 job = enqueue_review(repo_name, pr_number, action, priority=priority)
+            except RedisConnectionError as exc:
+                logger.exception(
+                    "Redis unavailable while enqueuing review job for %s#%s (action=%s)",
+                    repo_name,
+                    pr_number,
+                    action,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Queue backend unavailable",
+                ) from exc
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception(
                     "Failed to enqueue review job for %s#%s (action=%s)",

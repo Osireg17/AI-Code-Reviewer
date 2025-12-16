@@ -136,6 +136,17 @@ class Settings(BaseSettings):
         default=0.4, description="Minimum similarity score for RAG results (0-1)"
     )
 
+    # Worker Configuration
+    worker_name: str = Field(
+        default="pr-review-worker", description="RQ worker name for PR reviews"
+    )
+    worker_with_scheduler: bool = Field(
+        default=True, description="Run worker with scheduler enabled"
+    )
+    worker_job_timeout: int = Field(
+        default=600, description="Job timeout (seconds) for worker processes"
+    )
+
     @property
     def is_production(self) -> bool:
         """Check if running in production environment."""

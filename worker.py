@@ -33,6 +33,11 @@ def start_worker(run: bool = True) -> Worker:
         logger.error("No queues configured; aborting worker startup")
         sys.exit(1)
 
+    logger.info(
+        "Starting worker '%s' for queues: %s",
+        settings.worker_name,
+        ", ".join(q.name for q in queues),
+    )
     worker = Worker(
         queues=queues,
         connection=redis_conn,
@@ -52,6 +57,8 @@ def start_worker(run: bool = True) -> Worker:
         except Exception:
             logger.exception("Worker terminated due to unexpected error")
             sys.exit(1)
+        else:
+            logger.info("Worker '%s' exited cleanly", settings.worker_name)
 
     return worker
 

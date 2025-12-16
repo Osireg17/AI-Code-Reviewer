@@ -119,6 +119,12 @@ def enqueue_review(
         action,
         priority or "mapped",
     )
+    logger.debug(
+        "Enqueue options: timeout=%s, retry=%s, job_id=%s",
+        JOB_TIMEOUT_SECONDS,
+        RETRY_STRATEGY,
+        job_id,
+    )
     job = queue.enqueue(
         run_review_job,
         repo_name,

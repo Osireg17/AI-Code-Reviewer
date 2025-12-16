@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     host: str = Field(default="127.0.0.1", description="Server host")
     port: int = Field(default=8000, description="Server port")
 
+    # Redis / Queue Configuration
+    redis_host: str = Field(default="localhost", description="Redis host for RQ queue")
+    redis_port: int = Field(default=6379, description="Redis port for RQ queue")
+    redis_password: str | None = Field(
+        default=None, description="Redis password for RQ queue"
+    )
+
     # Pinecone Configuration
     pinecone_api_key: str | None = Field(
         default=None, description="Pinecone API key for vector database"
@@ -154,6 +161,12 @@ if settings.is_production:
         missing.append("GITHUB_WEBHOOK_SECRET")
     if settings.rag_enabled and not settings.pinecone_api_key:
         missing.append("PINECONE_API_KEY (required for RAG)")
+    if not settings.redis_host:
+        missing.append("REDIS_HOST")
+    if settings.redis_password is None:
+        missing.append("REDIS_PASSWORD")
+    if settings.redis_port <= 0:
+        missing.append("REDIS_PORT (must be > 0)")
     if missing:
         raise RuntimeError(
             "Missing required environment variables for production: "

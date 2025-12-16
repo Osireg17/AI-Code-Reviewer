@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from github import Auth, Github
 from github.PullRequest import PullRequest
+from redis.exceptions import ConnectionError as RedisConnectionError
 from rq import Worker
 from rq.exceptions import NoSuchJobError
 from rq.job import Job
@@ -445,6 +446,17 @@ async def github_webhook(
 
             try:
                 job = enqueue_review(repo_name, pr_number, action, priority=priority)
+            except RedisConnectionError as exc:
+                logger.exception(
+                    "Redis unavailable while enqueuing review job for %s#%s (action=%s)",
+                    repo_name,
+                    pr_number,
+                    action,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Queue backend unavailable",
+                ) from exc
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception(
                     "Failed to enqueue review job for %s#%s (action=%s)",

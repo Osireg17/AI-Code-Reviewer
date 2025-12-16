@@ -77,7 +77,9 @@ async def health_check() -> dict[str, str | bool | int]:
         queue_size = review_queue.count
         active_workers = len(Worker.all(connection=redis_conn))
     except Exception:
-        logger.exception("Health check: failed to query Redis/queue state")
+        logger.exception(
+            "Health check: failed to query Redis/queue state", exc_info=True
+        )
 
     return {
         "status": "healthy",

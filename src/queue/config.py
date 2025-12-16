@@ -30,12 +30,15 @@ PRIORITY_MAPPING: Mapping[str, str] = {
 }
 
 # Single Redis connection used by all queues
-redis_connection = Redis(
-    host=settings.redis_host,
-    port=settings.redis_port,
-    password=settings.redis_password,
-    socket_timeout=5,
-)
+if settings.redis_url:
+    redis_connection = Redis.from_url(settings.redis_url, socket_timeout=5)
+else:
+    redis_connection = Redis(
+        host=settings.redis_host,
+        port=settings.redis_port,
+        password=settings.redis_password,
+        socket_timeout=5,
+    )
 redis_conn = redis_connection  # alias for worker script imports
 
 # Create queues per priority lane; fall back to default when unmapped

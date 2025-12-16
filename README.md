@@ -119,69 +119,40 @@ The system follows a layered architecture with clear separation of concerns:
 
 ```mermaid
 flowchart TB
-    subgraph SourceControl["Source Control (GitHub)"]
-        direction LR
-        PR_EVENT["Pull Request<br/>Webhook Event"]
-        COMMENT_API["Comment Interface"]
-    end
-    
-    subgraph API_Layer["API Service Layer (Railway/FastAPI)"]
-        WEBHOOK_DISPATCHER["Webhook Dispatcher"]
-        TASK_QUEUE["Background Task Queue"]
-        PR_REVIEW_ENGINE["PR Review Engine"]
-    end
-    
-    subgraph AgentLayer["AI Agent Layer (code_reviewer.py)"]
-        CODE_REVIEW_AGENT["Code Review Agent"]
-        DEPENDENCY_CACHE[(Dependency Cache<br/>ReviewDependencies._cache)]
-    end
-    
-    subgraph ToolingLayer["Tool Integration Layer"]
-        GITHUB_INT["GitHub Integration Service<br/>• fetch_pr_context (cached)<br/>• list_changed_files (cached)<br/>• get_file_diff (cached)<br/>• get_full_file<br/>• post_review_comment (stateful)<br/>• post_summary_comment (stateful)"]
-        STYLE_GUIDE_SERVICE["Style Guide Service<br/>• search_style_guides"]
-    end
-    
-    subgraph ExternalServices["External Service Dependencies"]
-        LLM_SERVICE["OpenAI GPT-4o"]
-        VECTOR_DB["Pinecone Vector Database"]
-        GITHUB_CLOUD_API["GitHub Cloud API"]
+    subgraph SourceControl["GitHub"]
+        PR_EVENT["PR Event"]
+        COMMENT_API["Comments API"]
     end
 
-    %% Primary Event Flow
-    PR_EVENT -->|HTTP POST| WEBHOOK_DISPATCHER
-    WEBHOOK_DISPATCHER -->|Enqueue Task| TASK_QUEUE
-    TASK_QUEUE -->|Execute| PR_REVIEW_ENGINE
-    PR_REVIEW_ENGINE -->|Instantiate| CODE_REVIEW_AGENT
-    
-    %% GitHub Data Retrieval Flow
-    CODE_REVIEW_AGENT -->|Invoke| GITHUB_INT
-    GITHUB_INT -->|Cache Check| DEPENDENCY_CACHE
-    DEPENDENCY_CACHE -.->|Cache Hit<br/>Return Data| GITHUB_INT
-    GITHUB_INT -->|Cache Miss| GITHUB_CLOUD_API
-    GITHUB_CLOUD_API -->|API Response| GITHUB_INT
-    GITHUB_INT -->|Cache Result| DEPENDENCY_CACHE
-    
-    %% State Management Flow
-    GITHUB_INT -->|Set State Flags| DEPENDENCY_CACHE
-    PR_REVIEW_ENGINE -->|Monitor State| DEPENDENCY_CACHE
-    
-    %% AI & Knowledge Flow
-    CODE_REVIEW_AGENT -->|Query| STYLE_GUIDE_SERVICE
-    STYLE_GUIDE_SERVICE <-->|Vector Search| VECTOR_DB
-    CODE_REVIEW_AGENT <-->|LLM Generation| LLM_SERVICE
-    
-    %% Output Flow
-    PR_REVIEW_ENGINE -->|State Evaluation| DEPENDENCY_CACHE
-    PR_REVIEW_ENGINE -->|Conditional Post| COMMENT_API
+    subgraph Railway["Railway Deployment"]
+        WEBHOOK["FastAPI Webhook<br/>(Enqueuer)"]
+        REDIS[("Redis Queue<br/>• Events persisted<br/>• Retry config")]
+        WORKER["RQ Worker Process<br/>• Pull & process<br/>• Auto-retry failures"]
+    end
 
-    %% Styling
-    style DEPENDENCY_CACHE fill:#fff9c4,stroke:#f57c00
-    style GITHUB_INT fill:#e1f5ff,stroke:#0288d1
-    style CODE_REVIEW_AGENT fill:#fff4e1,stroke:#ff9800
-    
-    %% Legend
-    LEGEND["Symbol Legend:<br/>• (cached) = Tool with cache support<br/>• (stateful) = Tool that sets system state"]
-    GITHUB_INT -.-> LEGEND
+    subgraph ProcessingLayer["Review Processing"]
+        REVIEW_ENGINE["Review Engine"]
+        AI_AGENT["AI Agent + Tools"]
+    end
+
+    subgraph External["External Services"]
+        GITHUB_API["GitHub API"]
+        OPENAI["OpenAI API"]
+        PINECONE["Pinecone"]
+    end
+
+    PR_EVENT -->|"HTTP POST"| WEBHOOK
+    WEBHOOK -->|"Enqueue job<br/>(instant response)"| REDIS
+    REDIS -->|"Pull job"| WORKER
+    WORKER -->|"Execute"| REVIEW_ENGINE
+    REVIEW_ENGINE --> AI_AGENT
+    AI_AGENT --> GITHUB_API
+    AI_AGENT --> OPENAI
+    AI_AGENT --> PINECONE
+    REVIEW_ENGINE -->|"Post results"| COMMENT_API
+
+    style REDIS fill:#ffcccc,stroke:#ff0000
+    style WORKER fill:#ccffcc,stroke:#00ff00
 ```
 
 - **Agent**: `src/agents/code_reviewer.py` - Pydantic AI agent with tool registration

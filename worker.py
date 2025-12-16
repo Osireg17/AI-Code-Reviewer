@@ -42,7 +42,7 @@ def start_worker(run: bool = True) -> Worker:
         queues=queues,
         connection=redis_conn,
         name=settings.worker_name,
-        default_worker_ttl=settings.worker_job_timeout + 60,
+        worker_ttl=settings.worker_job_timeout + 60,
     )
 
     if run:

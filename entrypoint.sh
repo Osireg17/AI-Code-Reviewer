@@ -22,4 +22,27 @@ WEB_PID=$!
 
 trap cleanup SIGINT SIGTERM
 
-wait "$WORKER_PID" "$WEB_PID"
+monitor_children() {
+  # Stop the other process and exit if either child dies unexpectedly.
+  set +e
+  while true; do
+    wait -n "$WORKER_PID" "$WEB_PID"
+    exit_code=$?
+    set -e
+    if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+      echo "Worker exited (status $exit_code); stopping web server..."
+      kill "$WEB_PID" 2>/dev/null || true
+      wait "$WEB_PID" 2>/dev/null || true
+      exit "$exit_code"
+    fi
+    if ! kill -0 "$WEB_PID" 2>/dev/null; then
+      echo "Web server exited (status $exit_code); stopping worker..."
+      kill "$WORKER_PID" 2>/dev/null || true
+      wait "$WORKER_PID" 2>/dev/null || true
+      exit "$exit_code"
+    fi
+    set +e
+  done
+}
+
+monitor_children

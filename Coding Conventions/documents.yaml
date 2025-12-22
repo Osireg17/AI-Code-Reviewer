@@ -194,6 +194,13 @@
   document_type: reference
   url: null
 
+- file_path: Go/Mastering_go.pdf
+  language: go
+  namespace: go
+  source: mastering-go
+  document_type: reference
+  url: null
+
 # Java Documents
 - file_path: Java/Google Java Style Guide.pdf
   language: java
@@ -230,6 +237,27 @@
   document_type: best_practices
   url: null
 
+- file_path: Java/Core_Java_Volume_1.pdf
+  language: java
+  namespace: java
+  source: core-java-volume-1
+  document_type: reference
+  url: null
+
+- file_path: Java/javabook.pdf
+  language: java
+  namespace: java
+  source: javabook
+  document_type: reference
+  url: null
+
+- file_path: Java/Thinking_Java.pdf
+  language: java
+  namespace: java
+  source: thinking-in-java
+  document_type: reference
+  url: null
+
 # C++ Documents
 - file_path: C++/Google C++ Style Guide.pdf
   language: cpp
@@ -264,6 +292,20 @@
   namespace: cpp
   source: optimizing-cpp
   document_type: best_practices
+  url: null
+
+- file_path: C++/C++.Primer.5th.Edition_2013.pdf
+  language: cpp
+  namespace: cpp
+  source: cpp-primer
+  document_type: reference
+  url: null
+
+- file_path: C++/The_C++_Programming_Language_4th_Edition_Bjarne_Stroustrup.pdf
+  language: cpp
+  namespace: cpp
+  source: cpp-programming-language
+  document_type: reference
   url: null
 
 # Cross-Language Documents (Security, Design Patterns, Clean Code)
@@ -306,5 +348,48 @@
   language: cross-language
   namespace: cross-language
   source: software-engineering-principles
+  document_type: reference
+  url: null
+
+- file_path: Cross-Language/Software_Engineering_at_Google.pdf
+  language: cross-language
+  namespace: cross-language
+  source: software-engineering-at-google
+  document_type: best_practices
+  url: null
+
+- file_path: Cross-Language/Guide_to_the_Software_Engineering_Body_of_Knowledge.pdf
+  language: cross-language
+  namespace: cross-language
+  source: swebok-guide
+  document_type: reference
+  url: https://www.computer.org/education/bodies-of-knowledge/software-engineering
+
+# Unit Testing Documents (Cross-Language Best Practices)
+- file_path: Unit-testing/Unit_Testing_Principles_Practices_and_Patterns.pdf
+  language: cross-language
+  namespace: unit-testing
+  source: unit-testing-principles
+  document_type: best_practices
+  url: null
+
+- file_path: Unit-testing/The_Art_of_Unit_Testing.pdf
+  language: cross-language
+  namespace: unit-testing
+  source: art-of-unit-testing
+  document_type: best_practices
+  url: null
+
+- file_path: Unit-testing/The_art_of_software_testing_3_edition.pdf
+  language: cross-language
+  namespace: unit-testing
+  source: art-of-software-testing
+  document_type: best_practices
+  url: null
+
+- file_path: Unit-testing/Software_Testing_Concepts_and_Operations.pdf
+  language: cross-language
+  namespace: unit-testing
+  source: software-testing-concepts
   document_type: reference
   url: null

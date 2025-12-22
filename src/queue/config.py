@@ -88,16 +88,10 @@ def run_review_job(repo_name: str, pr_number: int, action: str = "opened") -> No
     logger.info(
         "Starting review job for %s#%s (action=%s)", repo_name, pr_number, action
     )
-    # TODO: UPDATE THIS IMPORT after refactoring webhooks.py
-    # OLD: from src.api.webhooks import process_pr_review
-    # NEW: from src.api.handlers.pr_review_handler import handle_pr_review
     # Deferred import keeps queue config lightweight for non-worker processes
-    from src.api.webhooks import process_pr_review
+    from src.api.handlers.pr_review_handler import handle_pr_review
 
-    # TODO: UPDATE THIS FUNCTION CALL after refactoring
-    # OLD: asyncio.run(process_pr_review(repo_name, pr_number, action))
-    # NEW: asyncio.run(handle_pr_review(repo_name, pr_number, action))
-    asyncio.run(process_pr_review(repo_name, pr_number, action))
+    asyncio.run(handle_pr_review(repo_name, pr_number, action))
     logger.info("Finished review job for %s#%s", repo_name, pr_number)
 
 

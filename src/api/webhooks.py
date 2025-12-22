@@ -168,8 +168,8 @@ async def github_webhook(
                 "status": "skipped",
             }
 
-        # Only process opened, reopened, and synchronize events
-        if action in ["opened", "reopened", "synchronize"]:
+        # Only process opened and reopened events
+        if action in ["opened", "reopened"]:
             labels = payload.get("pull_request", {}).get("labels", []) or []
             label_names = [label.get("name", "").lower() for label in labels]
             changed_files = payload.get("pull_request", {}).get("changed_files")

@@ -22,11 +22,10 @@ MAX_ATTEMPTS = 3
 RETRY_STRATEGY = Retry(max=MAX_ATTEMPTS - 1, interval=[30, 90, 180])
 DEFAULT_PRIORITY = "default"
 
-# Map event actions to priority lanes so we can throttle noisy events
+# Map event actions to priority lanes
 PRIORITY_MAPPING: Mapping[str, str] = {
     "opened": "high",
     "reopened": "default",
-    "synchronize": "low",
 }
 
 # Single Redis connection used by all queues

@@ -37,6 +37,7 @@ async def test_process_pr_review_runs_and_closes_session(monkeypatch):
 
     class FakePR:
         number = 1
+        state = "open"
 
     class FakeRepo:
         def get_pull(self, pr_number: int):

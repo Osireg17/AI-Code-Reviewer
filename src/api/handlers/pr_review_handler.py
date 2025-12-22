@@ -51,6 +51,11 @@ async def handle_pr_review(
         repo = github_client.get_repo(repo_name)
         pr = repo.get_pull(pr_number)
 
+        # Skip review if PR is already closed/merged
+        if pr.state != "open":
+            logger.info(f"Skipping review for {review_key} - PR state is '{pr.state}'")
+            return
+
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             (
                 is_incremental,

@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     bot_name: str = Field(
         default="SearchLightAI", description="Bot name to display in comments"
     )
+    github_app_bot_login: str = Field(
+        default="searchlightai[bot]",
+        description="GitHub App bot login username (for self-detection in webhooks)",
+    )
     max_files_per_review: int = Field(
         default=10, description="Maximum number of files to review per PR"
     )
@@ -141,7 +145,7 @@ class Settings(BaseSettings):
 
     # Worker Configuration
     worker_name: str = Field(
-        default="pr-review-worker", description="RQ worker name for PR reviews"
+        default="pr-review-worker-local", description="RQ worker name for PR reviews"
     )
     worker_with_scheduler: bool = Field(
         default=True, description="Run worker with scheduler enabled"

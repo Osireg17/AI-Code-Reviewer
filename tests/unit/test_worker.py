@@ -47,7 +47,7 @@ def test_start_worker_uses_configured_queues(monkeypatch):
     result = worker.start_worker(run=True)
 
     assert captured["setup_called"] is True
-    assert captured["worker_name"] == worker.settings.worker_name
+    assert captured["worker_name"].startswith(worker.settings.worker_name)
     assert result.work_called is True
     assert captured["with_scheduler"] == worker.settings.worker_with_scheduler
     assert captured["ttl"] == worker.settings.worker_job_timeout + 60

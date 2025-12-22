@@ -1,5 +1,35 @@
 """GitHub webhook handlers."""
 
+# TODO: REFACTORING STEP 1 - UPDATE IMPORTS
+# ====================
+# After implementing pr_review_handler.py, update these imports:
+#
+# DELETE these imports (moved to pr_review_handler.py):
+# - from src.agents.code_reviewer import code_review_agent, validate_review_result
+# - from src.models.dependencies import ReviewDependencies
+# - from src.models.outputs import CodeReviewResult
+# - from src.models.review_state import ReviewState
+# - from src.utils.rate_limiter import with_exponential_backoff
+# - from sqlalchemy.orm import Session
+# - import httpx
+# - from github import Auth, Github
+# - from github.PullRequest import PullRequest
+# - from src.database.db import SessionLocal
+# - from src.services.github_auth import github_app_auth
+#
+# ADD this import:
+# - from src.api.handlers.pr_review_handler import handle_pr_review
+#
+# KEEP these imports (still needed in this file):
+# - import hashlib, hmac, logging, from collections.abc import Callable, from typing import Any
+# - from fastapi import APIRouter, Header, HTTPException, Request, status
+# - from redis.exceptions import ConnectionError as RedisConnectionError
+# - from rq import Worker, from rq.exceptions import NoSuchJobError
+# - from rq.job import Job
+# - from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
+# - from src.config.settings import settings
+# - from src.queue.config import enqueue_review, redis_conn, review_queue
+
 import hashlib
 import hmac
 import logging
@@ -76,6 +106,22 @@ async def queue_job(job_id: str) -> dict[str, Any]:
         "result": latest_return if status_value == "finished" else None,
         "exc_info": latest_traceback if status_value == "failed" else None,
     }
+
+
+# TODO: REFACTORING STEP 2 - DELETE THESE FUNCTIONS
+# ====================
+# After implementing pr_review_handler.py, DELETE the following functions from this file:
+# 1. process_pr_review (lines ~81-154) → moved to handle_pr_review in pr_review_handler.py
+# 2. _determine_review_type (lines ~157-184) → moved to pr_review_handler.py
+# 3. _post_progress_comment_if_needed (lines ~187-198) → moved to pr_review_handler.py
+# 4. _run_code_review_agent (lines ~200-226) → moved to pr_review_handler.py
+# 5. _post_inline_comments_if_needed (lines ~228-265) → moved to pr_review_handler.py
+# 6. _post_summary_review_if_needed (lines ~267-294) → moved to pr_review_handler.py
+# 7. _update_review_state (lines ~296-327) → moved to pr_review_handler.py
+#
+# KEEP these functions:
+# - validate_signature (shared across all webhook handlers)
+# - github_webhook (main router - we'll update it later for conversation handler)
 
 
 async def process_pr_review(
@@ -326,6 +372,9 @@ async def _update_review_state(
     db.commit()
 
 
+# TODO: REFACTORING STEP 3 - KEEP THIS FUNCTION
+# ====================
+# This function stays in webhooks.py (shared across all webhook handlers)
 async def validate_signature(
     request: Request,
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
@@ -480,6 +529,30 @@ async def github_webhook(
         else:
             logger.info(f"Ignoring PR {action} event")
             return {"message": f"Event {action} ignored"}
+
+    # TODO: REFACTORING STEP 4 - ADD CONVERSATION HANDLER (FUTURE)
+    # ====================
+    # After refactoring is complete, add conversation handler here:
+    #
+    # if x_github_event == "pull_request_review_comment":
+    #     """Handle user replies to bot comments."""
+    #     action = payload.get("action")
+    #     comment = payload.get("comment", {})
+    #
+    #     logger.info(f"Received review comment {action} event")
+    #
+    #     # Only process created comments that are replies
+    #     if action == "created":
+    #         # Check if this is a reply to another comment
+    #         if comment.get("in_reply_to_id"):
+    #             # TODO: Import conversation handler when ready
+    #             # from src.api.handlers.conversation_handler import handle_conversation_reply
+    #             # return await handle_conversation_reply(payload)
+    #             logger.info("User replied to a comment (conversation handler not implemented yet)")
+    #             return {"message": "Conversation feature coming soon", "status": "ignored"}
+    #
+    #     logger.info(f"Ignoring review comment {action} event (not a reply)")
+    #     return {"message": f"Review comment {action} ignored"}
 
     # Ignore other events
     logger.info(f"Ignoring event type: {x_github_event}")

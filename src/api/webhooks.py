@@ -223,29 +223,35 @@ async def github_webhook(
             logger.info(f"Ignoring PR {action} event")
             return {"message": f"Event {action} ignored"}
 
-    # TODO: REFACTORING STEP 4 - ADD CONVERSATION HANDLER (FUTURE)
     # ====================
-    # After refactoring is complete, add conversation handler here:
-    #
-    # if x_github_event == "pull_request_review_comment":
-    #     """Handle user replies to bot comments."""
-    #     action = payload.get("action")
-    #     comment = payload.get("comment", {})
-    #
-    #     logger.info(f"Received review comment {action} event")
-    #
-    #     # Only process created comments that are replies
-    #     if action == "created":
-    #         # Check if this is a reply to another comment
-    #         if comment.get("in_reply_to_id"):
-    #             # TODO: Import conversation handler when ready
-    #             # from src.api.handlers.conversation_handler import handle_conversation_reply
-    #             # return await handle_conversation_reply(payload)
-    #             logger.info("User replied to a comment (conversation handler not implemented yet)")
-    #             return {"message": "Conversation feature coming soon", "status": "ignored"}
-    #
-    #     logger.info(f"Ignoring review comment {action} event (not a reply)")
-    #     return {"message": f"Review comment {action} ignored"}
+    # CONVERSATION HANDLER (Phase 2)
+    # ====================
+    # Handle user replies to bot comments
+    if x_github_event == "pull_request_review_comment":
+        """Handle user replies to bot comments."""
+        action = payload.get("action")
+        comment = payload.get("comment", {})
+
+        logger.info(f"Received review comment {action} event")
+
+        # Only process created comments that are replies
+        if action == "created" and comment.get("in_reply_to_id") is not None:
+            user_login = comment.get("user", {}).get("login", "")
+            bot_login = settings.github_app_bot_login or ""
+            # TODO: UNCOMMENT when implementing conversation feature
+            # from src.api.handlers.conversation_handler import handle_conversation_reply
+            # result = await handle_conversation_reply(payload)
+            # return result
+            if user_login == bot_login:
+                logger.info("Ignoring bot's own reply to a comment")
+                return {"message": "Bot reply ignored", "status": "ignored"}
+            logger.info(
+                "User replied to a comment (conversation handler not implemented yet)"
+            )
+            return {"message": "Conversation feature coming soon", "status": "ignored"}
+
+        logger.info(f"Ignoring review comment {action} event (not a reply)")
+        return {"message": f"Review comment {action} ignored"}
 
     # Ignore other events
     logger.info(f"Ignoring event type: {x_github_event}")

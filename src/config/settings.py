@@ -171,6 +171,8 @@ settings = Settings()
 # Validate required secrets in production to avoid silent failures
 if settings.is_production:
     missing = []
+    if not settings.github_app_bot_login:
+        missing.append("GITHUB_BOT_USERNAME")
     if not settings.openai_api_key:
         missing.append("OPENAI_API_KEY")
     if not settings.github_token:

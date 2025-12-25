@@ -59,7 +59,7 @@ class ReviewSummary(BaseModel):
     suggestions: int = 0
     praise_count: int = 0
     files_reviewed: int
-    recommendation: Literal["approve", "request_changes", "comment"]
+    recommendation: Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
     key_points: list[str] = Field(default_factory=list)
 
     @property

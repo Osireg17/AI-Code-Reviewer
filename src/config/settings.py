@@ -151,7 +151,7 @@ class Settings(BaseSettings):
         default=True, description="Run worker with scheduler enabled"
     )
     worker_job_timeout: int = Field(
-        default=600, description="Job timeout (seconds) for worker processes"
+        default=1200, description="Job timeout (seconds) for worker processes"
     )
 
     @property

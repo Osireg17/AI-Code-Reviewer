@@ -12,6 +12,7 @@ from rq.exceptions import NoSuchJobError
 from rq.job import Job
 from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 
+from src.api.handlers.conversation_handler import handle_conversation_reply
 from src.config.settings import settings
 from src.queue.config import enqueue_review, redis_conn, review_queue
 
@@ -223,10 +224,6 @@ async def github_webhook(
             logger.info(f"Ignoring PR {action} event")
             return {"message": f"Event {action} ignored"}
 
-    # ====================
-    # CONVERSATION HANDLER (Phase 2)
-    # ====================
-    # Handle user replies to bot comments
     if x_github_event == "pull_request_review_comment":
         """Handle user replies to bot comments."""
         action = payload.get("action")
@@ -236,19 +233,8 @@ async def github_webhook(
 
         # Only process created comments that are replies
         if action == "created" and comment.get("in_reply_to_id") is not None:
-            user_login = comment.get("user", {}).get("login", "")
-            bot_login = settings.github_app_bot_login or ""
-            # TODO: UNCOMMENT when implementing conversation feature
-            # from src.api.handlers.conversation_handler import handle_conversation_reply
-            # result = await handle_conversation_reply(payload)
-            # return result
-            if user_login == bot_login:
-                logger.info("Ignoring bot's own reply to a comment")
-                return {"message": "Bot reply ignored", "status": "ignored"}
-            logger.info(
-                "User replied to a comment (conversation handler not implemented yet)"
-            )
-            return {"message": "Conversation feature coming soon", "status": "ignored"}
+            result: dict[str, Any] = await handle_conversation_reply(payload)
+            return result
 
         logger.info(f"Ignoring review comment {action} event (not a reply)")
         return {"message": f"Review comment {action} ignored"}

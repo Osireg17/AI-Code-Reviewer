@@ -34,10 +34,18 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from github import Auth, Github
 from sqlalchemy.orm import Session
 
+from src.agents.conversation_agent import (
+    conversation_agent,
+    validate_conversation_response,
+)
+from src.config.settings import settings
+from src.database.db import SessionLocal
 from src.models.conversation import ConversationThread
-from src.services.github_auth import GitHubAppAuth
+from src.models.dependencies import ConversationDependencies
+from src.services.github_auth import GitHubAppAuth, get_github_app_auth
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +132,7 @@ async def handle_conversation_reply(
     INCLUDE original bot suggestion
 
     INVOKE conversation agent
-    PASS context and user's question
+     context and user's question
     GET agent response
 
     POST reply to GitHub
@@ -163,170 +171,180 @@ async def handle_conversation_reply(
     Error handling: Log errors, return status dict (no exceptions)
     Observability: Log all steps, include repo/PR/comment IDs in logs
     """
-    # TODO: IMPLEMENT - Initialize defaults
-    pass
-    # IF session_factory is None THEN
-    #     SET session_factory = SessionLocal
-    # IF github_auth is None THEN
-    #     IMPORT get_github_app_auth
-    #     SET github_auth = get_github_app_auth()
+    # Initialize defaults
+    if session_factory is None:
+        session_factory = SessionLocal
+    if github_auth is None:
+        github_auth = get_github_app_auth()
 
-    # TODO: IMPLEMENT - Extract payload data
-    pass
-    # EXTRACT action from payload
-    # EXTRACT comment dict from payload
-    # EXTRACT repo_full_name from payload.repository.full_name
-    # EXTRACT pr_number from payload.pull_request.number
-    # EXTRACT comment_id, comment_body, comment_user from comment dict
-    # EXTRACT in_reply_to_id from comment (None if not a reply)
-    # EXTRACT file_path, line_number, commit_id from comment
-    # LOG "Processing comment {comment_id} on PR #{pr_number}"
+    # Extract payload data
+    action = payload.get("action")
+    comment = payload.get("comment", {})
+    repository = payload.get("repository", {})
+    pull_request = payload.get("pull_request", {})
 
-    # TODO: IMPLEMENT - Check if action is "created"
-    pass
-    # IF action != "created" THEN
-    #     LOG "Ignoring {action} event (only process 'created')"
-    #     RETURN {"message": "Ignored non-created event", "status": "skipped"}
+    repo_full_name = repository.get("full_name")
+    pr_number = pull_request.get("number")
+    comment_id = comment.get("id")
+    comment_body = comment.get("body", "")
+    comment_user = comment.get("user", {})
+    in_reply_to_id = comment.get("in_reply_to_id")
+    file_path = comment.get("path")
+    line_number = comment.get("line")
+    comment.get("commit_id")
 
-    # TODO: IMPLEMENT - Validate this is a reply
-    pass
-    # IF in_reply_to_id is None THEN
-    #     LOG "Comment is not a reply, skipping"
-    #     RETURN {"message": "Not a reply to bot", "status": "skipped"}
+    logger.info(
+        f"Processing comment {comment_id} on PR #{pr_number} in {repo_full_name}"
+    )
 
-    # TODO: IMPLEMENT - Detect bot self-replies
-    pass
-    # GET bot_login from settings (github_app_bot_login)
-    # IF comment_user.login == bot_login THEN
-    #     LOG "Bot replied to itself, preventing loop"
-    #     RETURN {"message": "Bot self-reply ignored", "status": "skipped"}
+    # Check if action is "created"
+    if action != "created":
+        logger.info(f"Ignoring {action} event (only process 'created')")
+        return {"message": f"Ignored non-created event: {action}", "status": "skipped"}
 
-    # TODO: IMPLEMENT - Authenticate with GitHub
-    pass
-    # TRY:
-    #     GET installation_token = await github_auth.get_installation_access_token()
-    #     CREATE Auth.Token(installation_token)
-    #     CREATE github_client = Github(auth=auth)
-    #     GET repo = github_client.get_repo(repo_full_name)
-    #     GET pr = repo.get_pull(pr_number)
-    # EXCEPT GithubException as e:
-    #     LOG error "GitHub API error: {e}"
-    #     RETURN {"message": f"GitHub error: {e}", "status": "error"}
+    # Validate this is a reply
+    if in_reply_to_id is None:
+        logger.info("Comment is not a reply, skipping")
+        return {"message": "Not a reply to bot", "status": "skipped"}
 
-    # TODO: IMPLEMENT - Load or create conversation thread
-    pass
-    # OPEN database session
-    # TRY:
-    #     QUERY ConversationThread WHERE comment_id = in_reply_to_id
-    #     IF thread exists THEN
-    #         SET conversation_thread = existing thread
-    #         LOG "Loaded existing thread {thread.id}"
-    #     ELSE
-    #         CREATE new ConversationThread:
-    #             - repo_full_name
-    #             - pr_number
-    #             - comment_id = in_reply_to_id
-    #             - thread_type = "inline_comment"
-    #             - status = "active"
-    #             - original_file_path = file_path
-    #             - original_line_number = line_number
-    #             - thread_messages = []
-    #         ADD to database
-    #         LOG "Created new thread for comment {in_reply_to_id}"
-    # EXCEPT Exception as e:
-    #     LOG error "Database error: {e}"
-    #     ROLLBACK session
-    #     RETURN {"message": f"Database error: {e}", "status": "error"}
+    # Detect bot self-replies
+    bot_login = settings.github_app_bot_login
+    user_login = comment_user.get("login")
+    comment_user.get("id")
+    user_type = comment_user.get("type")
 
-    # TODO: IMPLEMENT - Fetch code context
-    pass
-    # TRY:
-    #     GET original_comment = pr.get_review_comment(in_reply_to_id)
-    #     GET original_commit_sha = original_comment.original_commit_id
-    #     GET current_commit_sha = pr.head.sha
-    #
-    #     IF file_path exists in repo THEN
-    #         TRY:
-    #             GET original_code = repo.get_contents(file_path, ref=original_commit_sha).decoded_content
-    #             GET current_code = repo.get_contents(file_path, ref=current_commit_sha).decoded_content
-    #             SET code_changed = (original_code != current_code)
-    #         EXCEPT UnknownObjectException:
-    #             SET original_code = None (file was deleted or moved)
-    #             SET current_code = None
-    #             SET code_changed = True
-    #     ELSE:
-    #         SET original_code = None
-    #         SET current_code = None
-    #         SET code_changed = False
-    # EXCEPT Exception as e:
-    #     LOG warning "Could not fetch code context: {e}"
-    #     SET original_code = None
-    #     SET current_code = None
-    #     SET code_changed = False
+    # Check both username and type to be extra safe
+    if user_login == bot_login or user_type == "Bot":
+        logger.info(
+            f"Bot replied to itself (user={user_login}, type={user_type}), preventing loop"
+        )
+        return {"message": "Bot self-reply ignored", "status": "skipped"}
 
-    # TODO: IMPLEMENT - Build agent context
-    pass
-    # CREATE context dict:
-    #     - conversation_history = conversation_thread.get_context_for_llm()
-    #     - user_question = comment_body
-    #     - original_bot_comment = original_comment.body (if available)
-    #     - file_path = file_path
-    #     - line_number = line_number
-    #     - original_code_snippet = original_code (if available)
-    #     - current_code_snippet = current_code (if available)
-    #     - code_changed = code_changed
-    #     - pr_number = pr_number
-    #     - repo_name = repo_full_name
+    # Authenticate with GitHub
+    installation_token = await github_auth.get_installation_access_token()
+    auth = Auth.Token(installation_token)
+    github_client = Github(auth=auth)
+    repo = github_client.get_repo(repo_full_name)
+    pr = repo.get_pull(pr_number)
 
-    # TODO: IMPLEMENT - Invoke conversation agent
-    pass
-    # FROM src.agents.conversation_agent IMPORT conversation_agent
-    # TRY:
-    #     RUN agent with context
-    #     GET response from agent.run(user_prompt, deps=context)
-    #     EXTRACT bot_reply_text from response
-    # EXCEPT Exception as e:
-    #     LOG error "Agent error: {e}"
-    #     SET bot_reply_text = "I encountered an error processing your question. Please try rephrasing or contact support."
+    # Load or create conversation thread
+    db = session_factory()
+    try:
+        # Query for existing thread
+        conversation_thread = (
+            db.query(ConversationThread)
+            .filter(ConversationThread.comment_id == in_reply_to_id)
+            .first()
+        )
 
-    # TODO: IMPLEMENT - Post reply to GitHub
-    pass
-    # TRY:
-    #     CREATE threaded reply:
-    #         pr.create_review_comment(
-    #             body=bot_reply_text,
-    #             commit=pr.head.sha,
-    #             path=file_path,
-    #             line=line_number,
-    #             in_reply_to=in_reply_to_id
-    #         )
-    #     LOG "Posted reply to comment {in_reply_to_id}"
-    # EXCEPT GithubException as e:
-    #     LOG error "Failed to post reply: {e}"
-    #     ROLLBACK database
-    #     RETURN {"message": f"Failed to post reply: {e}", "status": "error"}
+        if conversation_thread:
+            logger.info(f"Loaded existing thread {conversation_thread.id}")
+        else:
+            # Create new thread
+            conversation_thread = ConversationThread(
+                repo_full_name=repo_full_name,
+                pr_number=pr_number,
+                comment_id=in_reply_to_id,
+                thread_type="inline_comment",
+                status="active",
+                original_file_path=file_path,
+                original_line_number=line_number,
+                thread_messages=[],
+            )
+            db.add(conversation_thread)
+            logger.info(f"Created new thread for comment {in_reply_to_id}")
 
-    # TODO: IMPLEMENT - Update database
-    pass
-    # ADD user message to thread:
-    #     conversation_thread.add_message(
-    #         role="developer",
-    #         content=comment_body,
-    #         comment_id=comment_id
-    #     )
-    # ADD bot reply to thread:
-    #     conversation_thread.add_message(
-    #         role="bot",
-    #         content=bot_reply_text,
-    #         comment_id=None  # GitHub API doesn't return new comment ID immediately
-    #     )
-    # COMMIT database session
-    # LOG "Updated conversation thread {conversation_thread.id}"
+        # Fetch code context
+        original_code_snippet = None
+        current_code_snippet = None
+        code_changed = False
+        original_bot_comment = None
 
-    # TODO: IMPLEMENT - Return success
-    # CLOSE database session
-    # RETURN {"message": "Reply posted successfully", "status": "success"}
-    return {"message": "Not implemented yet", "status": "error"}
+        try:
+            # Get the original comment that started this thread
+            original_comment = pr.get_review_comment(in_reply_to_id)
+            original_bot_comment = original_comment.body
+            original_commit_sha = original_comment.original_commit_id
+            current_commit_sha = pr.head.sha
+
+            # Fetch code snippets with context
+            if file_path and line_number:
+                try:
+                    original_code_snippet = _extract_file_context(
+                        repo, file_path, original_commit_sha, line_number
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not fetch original code context: {e}")
+
+                try:
+                    current_code_snippet = _extract_file_context(
+                        repo, file_path, current_commit_sha, line_number
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not fetch current code context: {e}")
+
+                # Determine if code changed
+                if original_code_snippet and current_code_snippet:
+                    code_changed = original_code_snippet != current_code_snippet
+                elif original_code_snippet != current_code_snippet:
+                    code_changed = True
+        except Exception as e:
+            logger.warning(f"Could not fetch code context: {e}")
+
+        # Build agent context
+        deps = ConversationDependencies(
+            conversation_history=conversation_thread.get_context_for_llm(),
+            user_question=comment_body,
+            original_bot_comment=original_bot_comment,
+            file_path=file_path or "",
+            line_number=line_number or 1,
+            original_code_snippet=original_code_snippet,
+            current_code_snippet=current_code_snippet,
+            code_changed=code_changed,
+            pr_number=pr_number,
+            repo_name=repo_full_name,
+            repo=repo,
+            pr=pr,
+            github_client=github_client,
+            db_session=db,
+        )
+
+        # Invoke conversation agent
+        logger.info(f"Invoking conversation agent for comment {comment_id}")
+        result = await conversation_agent.run(comment_body, deps=deps)
+        bot_reply_text = result.output
+
+        # Validate and sanitize response
+        bot_reply_text = validate_conversation_response(bot_reply_text)
+
+        # Post reply to GitHub as threaded comment
+        pr.create_review_comment(
+            body=bot_reply_text,
+            commit=pr.head.sha,
+            path=file_path,
+            line=line_number,
+            in_reply_to=in_reply_to_id,
+        )
+        logger.info(f"Posted reply to comment {in_reply_to_id}")
+
+        # Update database with conversation history
+        conversation_thread.add_message(
+            role="developer", content=comment_body, comment_id=comment_id
+        )
+        conversation_thread.add_message(
+            role="bot",
+            content=bot_reply_text,
+            comment_id=None,
+        )
+
+        # Commit all changes (Option A: single commit at end)
+        db.commit()
+        logger.info(f"Updated conversation thread {conversation_thread.id}")
+
+        return {"message": "Reply posted successfully", "status": "success"}
+
+    finally:
+        db.close()
 
 
 # === HELPER FUNCTIONS ===

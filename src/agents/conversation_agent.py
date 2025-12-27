@@ -1,35 +1,3 @@
-"""Conversation agent for handling user replies to bot PR review comments.
-
-=== CONTEXT ===
-Purpose: Generate contextual responses to developer questions about code review feedback
-Reference: Similar to code_reviewer.py but focused on dialogue, not initial reviews
-Trigger: Called by conversation_handler.py when user replies to bot comment
-
-=== DEPENDENCIES ===
-- Pydantic AI Agent framework
-- OpenAI API (via settings.openai_model)
-- Conversation tools (fetch thread, code snippets, post replies)
-- RAG tools (reuse search_style_guides from code_reviewer)
-- Database (ConversationThread model for history)
-
-=== AGENT BEHAVIOR ===
-The conversation agent:
-1. MAINTAINS context from previous messages in thread
-2. REFERENCES original code review suggestion
-3. COMPARES original code vs current code (if changed)
-4. PROVIDES clear, helpful explanations
-5. CITES coding standards when relevant (via RAG)
-6. ESCALATES to human reviewer if question is beyond scope
-7. STAYS friendly, concise, and educational
-
-Response types:
-- Clarification: Explain why suggestion was made
-- Justification: Cite coding standards or best practices
-- Code change detected: Note that code has been updated
-- Out of scope: Politely redirect to human reviewer
-- Acknowledgment: Thank user for good questions/changes
-"""
-
 import logging
 
 from pydantic_ai import Agent, RunContext

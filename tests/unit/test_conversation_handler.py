@@ -141,8 +141,10 @@ class TestHandleConversationReply(unittest.IsolatedAsyncioTestCase):
         payload = self.payload.copy()
         payload["action"] = "edited"
 
-        # Act
-        result = await handle_conversation_reply(payload=payload)
+        # Mock to prevent auth loading
+        with patch("src.api.handlers.conversation_handler.get_github_app_auth"):
+            # Act
+            result = await handle_conversation_reply(payload=payload)
 
         # Assert
         self.assertEqual(result["status"], "skipped")
@@ -154,8 +156,10 @@ class TestHandleConversationReply(unittest.IsolatedAsyncioTestCase):
         payload = self.payload.copy()
         payload["comment"]["in_reply_to_id"] = None
 
-        # Act
-        result = await handle_conversation_reply(payload=payload)
+        # Mock to prevent auth loading
+        with patch("src.api.handlers.conversation_handler.get_github_app_auth"):
+            # Act
+            result = await handle_conversation_reply(payload=payload)
 
         # Assert
         self.assertEqual(result["status"], "skipped")
@@ -168,7 +172,10 @@ class TestHandleConversationReply(unittest.IsolatedAsyncioTestCase):
         payload["comment"]["user"]["login"] = "searchlightai[bot]"
         payload["comment"]["user"]["type"] = "Bot"
 
-        with patch("src.api.handlers.conversation_handler.settings") as mock_settings:
+        with (
+            patch("src.api.handlers.conversation_handler.settings") as mock_settings,
+            patch("src.api.handlers.conversation_handler.get_github_app_auth"),
+        ):
             mock_settings.github_app_bot_login = "searchlightai[bot]"
 
             # Act

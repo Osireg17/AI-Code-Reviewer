@@ -221,6 +221,10 @@ async def handle_conversation_reply(
         return {"message": "Bot self-reply ignored", "status": "skipped"}
 
     # Authenticate with GitHub
+    # TODO: PyGithub is synchronous and blocks the event loop. Consider either:
+    #   (a) Using asyncio.to_thread() or run_in_executor() for blocking calls
+    #   (b) Switching to an async GitHub client like githubkit
+    #   For now, acceptable since handlers run as background jobs via RQ queue
     installation_token = await github_auth.get_installation_access_token()
     auth = Auth.Token(installation_token)
     github_client = Github(auth=auth)
@@ -263,6 +267,19 @@ async def handle_conversation_reply(
         try:
             # Get the original comment that started this thread
             original_comment = pr.get_review_comment(in_reply_to_id)
+
+            # Verify the original comment was made by the bot
+            # Don't respond to replies in human-only threads
+            original_author = original_comment.user.login
+            if original_author != bot_login:
+                logger.info(
+                    f"Original comment by {original_author}, not bot ({bot_login}). Skipping."
+                )
+                return {
+                    "message": f"Not replying to non-bot comment by {original_author}",
+                    "status": "skipped",
+                }
+
             original_bot_comment = original_comment.body
             original_commit_sha = original_comment.original_commit_id
             current_commit_sha = pr.head.sha
@@ -318,11 +335,9 @@ async def handle_conversation_reply(
         bot_reply_text = validate_conversation_response(bot_reply_text)
 
         # Post reply to GitHub as threaded comment
+        # When replying, only provide body and in_reply_to (GitHub API requirement)
         pr.create_review_comment(
             body=bot_reply_text,
-            commit=pr.head.sha,
-            path=file_path,
-            line=line_number,
             in_reply_to=in_reply_to_id,
         )
         logger.info(f"Posted reply to comment {in_reply_to_id}")

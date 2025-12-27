@@ -123,59 +123,60 @@ The system follows a layered architecture with two main workflows:
 
 ```mermaid
 flowchart TB
-    subgraph GitHub["GitHub"]
-        PR_EVENT["Pull Request Event<br/>(opened/synchronized)"]
-        REPLY_EVENT["Comment Reply Event<br/>(in_reply_to_id present)"]
-        COMMENT_API["Comments API"]
+    subgraph SourceControl["Source Control Platform (GitHub)"]
+        PR_EVENT["Pull Request Event Trigger<br/>• opened<br/>• synchronized"]
+        COMMENT_EVENT["Comment Reply Event<br/>(in_reply_to_id present)"]
+        COMMENT_API["GitHub Comments API"]
     end
 
-    subgraph Railway["Railway Deployment"]
-        WEBHOOK["FastAPI Webhook Router<br/>• PR reviews → Queue<br/>• Comment replies → Direct"]
-        REDIS[("Redis Queue<br/>• PR review jobs<br/>• Retry on failure")]
-        WORKER["RQ Worker<br/>• Background PR reviews"]
-        DATABASE[("PostgreSQL<br/>• Conversation threads<br/>• Message history")]
+    subgraph DeploymentPlatform["Deployment Platform (Railway)"]
+        WEBHOOK["FastAPI Webhook Endpoint<br/>• PR reviews → Async Queue<br/>• Comment replies → Synchronous Processing"]
+        REDIS[("Redis Message Queue<br/>• PR review job queue<br/>• Automatic retry on failure")]
+        WORKER["RQ Worker Process<br/>• Background job processing"]
+        DATABASE[("PostgreSQL Database<br/>• Conversation thread storage<br/>• Message history persistence")]
     end
 
-    subgraph ReviewWorkflow["PR Review Workflow"]
+    subgraph ReviewProcess["Code Review Process"]
         REVIEW_HANDLER["PR Review Handler"]
-        CODE_AGENT["Code Review Agent<br/>• Analyze diffs<br/>• RAG lookup<br/>• Post comments"]
+        REVIEW_AGENT["Code Review Agent<br/>• Diff analysis<br/>• RAG-based style guide lookup<br/>• Comment generation"]
     end
 
-    subgraph ConversationWorkflow["Conversation Workflow"]
-        CONV_HANDLER["Conversation Handler<br/>• Load thread from DB<br/>• Fetch code context<br/>• Detect changes"]
-        CONV_AGENT["Conversation Agent<br/>• Answer questions<br/>• Compare versions<br/>• Fetch snippets"]
+    subgraph ConversationProcess["Conversation Management"]
+        CONV_HANDLER["Conversation Handler<br/>• Thread state management<br/>• Code context retrieval<br/>• Change detection"]
+        CONV_AGENT["Conversation Agent<br/>• Question answering<br/>• Version comparison<br/>• Code snippet extraction"]
     end
 
-    subgraph External["External Services"]
-        GITHUB_API["GitHub API<br/>• Fetch files/diffs<br/>• Post comments"]
-        OPENAI["OpenAI GPT-4<br/>• Code analysis<br/>• Conversations"]
-        PINECONE["Pinecone Vector DB<br/>• Style guide RAG<br/>• PEP 8, Airbnb JS, OWASP"]
+    subgraph ExternalServices["External Service Integrations"]
+        GITHUB_API["GitHub REST API<br/>• File/diff retrieval<br/>• Comment submission"]
+        LLM_SERVICE["OpenAI GPT-4<br/>• Code analysis<br/>• Natural language processing"]
+        VECTOR_DB["Pinecone Vector Database<br/>• Style guide embeddings<br/>• PEP 8, Airbnb JS, OWASP compliance"]
     end
 
-    %% PR Review Flow
-    PR_EVENT -->|"1. HTTP POST"| WEBHOOK
-    WEBHOOK -->|"2. Enqueue job"| REDIS
-    REDIS -->|"3. Pull job"| WORKER
-    WORKER -->|"4. Execute"| REVIEW_HANDLER
-    REVIEW_HANDLER --> CODE_AGENT
-    CODE_AGENT --> GITHUB_API
-    CODE_AGENT --> OPENAI
-    CODE_AGENT --> PINECONE
-    REVIEW_HANDLER -->|"5. Post review"| COMMENT_API
-    REVIEW_HANDLER -.->|"Store initial context"| DATABASE
+    %% Primary Review Workflow
+    PR_EVENT -->|"1. Webhook payload"| WEBHOOK
+    WEBHOOK -->|"2. Queue processing job"| REDIS
+    REDIS -->|"3. Job consumption"| WORKER
+    WORKER -->|"4. Execute review process"| REVIEW_HANDLER
+    REVIEW_HANDLER --> REVIEW_AGENT
+    REVIEW_AGENT --> GITHUB_API
+    REVIEW_AGENT --> LLM_SERVICE
+    REVIEW_AGENT --> VECTOR_DB
+    REVIEW_HANDLER -->|"5. Submit review comments"| COMMENT_API
+    REVIEW_HANDLER -.->|"Persist initial context"| DATABASE
 
-    %% Conversation Flow
-    REPLY_EVENT -->|"1. HTTP POST"| WEBHOOK
-    WEBHOOK -->|"2. Direct call"| CONV_HANDLER
-    CONV_HANDLER <-->|"3. Load/save thread"| DATABASE
+    %% Conversation Workflow
+    COMMENT_EVENT -->|"1. Webhook payload"| WEBHOOK
+    WEBHOOK -->|"2. Synchronous processing"| CONV_HANDLER
+    CONV_HANDLER <-->|"3. Thread state persistence"| DATABASE
     CONV_HANDLER --> CONV_AGENT
-    CONV_AGENT -->|"Fetch code/thread"| GITHUB_API
-    CONV_AGENT --> OPENAI
-    CONV_HANDLER -->|"4. Post reply"| COMMENT_API
+    CONV_AGENT -->|"Retrieve code context"| GITHUB_API
+    CONV_AGENT --> LLM_SERVICE
+    CONV_HANDLER -->|"4. Post conversational response"| COMMENT_API
 
+    %% Styling for clarity
     style REDIS fill:#ffe6e6,stroke:#cc0000,stroke-width:2px
     style DATABASE fill:#e6f3ff,stroke:#0066cc,stroke-width:2px
-    style CODE_AGENT fill:#e6ffe6,stroke:#00cc00,stroke-width:2px
+    style REVIEW_AGENT fill:#e6ffe6,stroke:#00cc00,stroke-width:2px
     style CONV_AGENT fill:#fff0e6,stroke:#ff9900,stroke-width:2px
 ```
 

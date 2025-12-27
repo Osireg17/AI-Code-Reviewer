@@ -1,35 +1,3 @@
-"""Handler for GitHub pull request review comment conversations.
-
-=== CONTEXT ===
-Purpose: Handle user replies to bot comments on PRs
-Trigger: pull_request_review_comment webhook event with in_reply_to_id
-Reference: Similar to pr_review_handler.py but focused on conversational responses
-
-=== DEPENDENCIES ===
-- Database session (ConversationThread queries and updates)
-- GitHub API (fetch comment details, code context, post replies)
-- Conversation agent (contextual response generation)
-- GitHub App authentication (token for API calls)
-
-=== BEHAVIOR ===
-Main flow:
-1. VALIDATE incoming webhook payload structure
-2. DETECT bot self-replies (prevent infinite loops)
-3. LOAD or CREATE conversation thread from database
-4. FETCH code context (original code at time of comment + current code if changed)
-5. BUILD agent context with conversation history and code
-6. INVOKE conversation agent to generate response
-7. POST reply to GitHub as threaded comment
-8. UPDATE conversation thread in database with new messages
-
-Edge cases:
-- Bot replies to itself (skip processing)
-- Original comment not found (handle gracefully)
-- Code was deleted/moved since original comment
-- Database unavailable (fail gracefully)
-- Multiple rapid replies (idempotency)
-"""
-
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -50,127 +18,11 @@ from src.services.github_auth import GitHubAppAuth, get_github_app_auth
 logger = logging.getLogger(__name__)
 
 
-# === MAIN HANDLER ===
-
-
 async def handle_conversation_reply(
     payload: dict[str, Any],
     session_factory: Callable[[], Session] | None = None,
     github_auth: GitHubAppAuth | None = None,
 ) -> dict[str, str]:
-    """
-    Handle user replies to bot comments on pull requests.
-
-    === INPUT ===
-    payload: GitHub webhook payload containing:
-        - action: "created", "edited", etc.
-        - comment: {
-            id, body, user, in_reply_to_id,
-            path, line, commit_id, pull_request_url
-          }
-        - repository: {full_name}
-        - pull_request: {number, head.sha, base.sha}
-
-    session_factory: Database session factory (injected for testing)
-    github_auth: GitHub authentication service (injected for testing)
-
-    === OUTPUT ===
-    Dict with status message:
-        {"message": "Reply posted", "status": "success"}
-        {"message": "Skipped - bot reply", "status": "skipped"}
-        {"message": "Error: ...", "status": "error"}
-
-    === PRECONDITIONS ===
-    - Webhook signature already validated by webhooks.py
-    - Payload contains valid GitHub comment event data
-    - Bot GitHub App is installed on repository
-
-    === POSTCONDITIONS ===
-    - Bot reply posted to GitHub if appropriate
-    - ConversationThread updated in database
-    - All errors logged for monitoring
-
-    === LOGIC FLOW ===
-    INITIALIZE defaults if not provided
-
-    EXTRACT data from payload
-
-    CHECK if action is "created" (only handle new comments)
-    IF not created THEN
-        LOG and RETURN early (skip edits/deletes)
-
-    VALIDATE comment has in_reply_to_id (is a reply)
-    IF not a reply THEN
-        LOG and RETURN early (not a conversation)
-
-    DETECT bot self-replies
-    IF comment.user.login == bot_login THEN
-        LOG "Bot replied to itself, skipping"
-        RETURN early (prevent infinite loops)
-
-    AUTHENTICATE with GitHub App
-    GET installation access token
-    CREATE GitHub client
-
-    FETCH repository and PR objects
-    GET pull request details
-
-    LOAD or CREATE conversation thread from database
-    IF thread exists THEN
-        UPDATE existing thread
-    ELSE
-        CREATE new thread with original comment details
-
-    FETCH code context
-    GET original code at commit when comment was posted
-    GET current code at PR head
-    COMPARE to detect if code changed
-
-    BUILD conversation context for agent
-    INCLUDE conversation history from database
-    INCLUDE code snippets (original + current if different)
-    INCLUDE original bot suggestion
-
-    INVOKE conversation agent
-     context and user's question
-    GET agent response
-
-    POST reply to GitHub
-    CREATE threaded comment using in_reply_to_id
-    LOG success
-
-    UPDATE database
-    ADD user message to conversation thread
-    ADD bot reply to conversation thread
-    COMMIT changes
-
-    RETURN success status
-
-    === EDGE CASES ===
-    - Bot replies to own comment: Skip processing
-    - Original comment deleted: Load from database or fail gracefully
-    - Code file deleted: Include note in context
-    - Multiple rapid replies: Database handles via thread locking
-    - GitHub API errors: Log and return error status
-    - Database errors: Rollback and return error status
-
-    === ALTERNATIVES CONSIDERED ===
-    1. Queue conversation replies (like PR reviews)
-       - PRO: Handles spikes in traffic
-       - CON: Adds latency, users expect quick responses
-       - DECISION: Process synchronously for now, queue later if needed
-
-    2. Store full conversation in separate messages table
-       - PRO: Normalized database design
-       - CON: More complex queries, JSONB is sufficient
-       - DECISION: Use JSONB array (simpler, fewer queries)
-
-    === INTEGRATION ===
-    Triggered by: webhooks.py when pull_request_review_comment event received
-    Calls into: conversation_agent.py, GitHub API, database
-    Error handling: Log errors, return status dict (no exceptions)
-    Observability: Log all steps, include repo/PR/comment IDs in logs
-    """
     # Initialize defaults
     if session_factory is None:
         session_factory = SessionLocal
@@ -338,6 +190,8 @@ async def handle_conversation_reply(
         # When replying, only provide body and in_reply_to (GitHub API requirement)
         pr.create_review_comment(
             body=bot_reply_text,
+            commit=pr.head.sha,
+            path=file_path,
             in_reply_to=in_reply_to_id,
         )
         logger.info(f"Posted reply to comment {in_reply_to_id}")
@@ -362,9 +216,6 @@ async def handle_conversation_reply(
         db.close()
 
 
-# === HELPER FUNCTIONS ===
-
-
 def _extract_file_context(
     repo: Any,  # github.Repository.Repository
     file_path: str,
@@ -372,45 +223,6 @@ def _extract_file_context(
     line_number: int,
     context_lines: int = 5,
 ) -> str:
-    """
-    Extract a code snippet with context lines around target line.
-
-    === PURPOSE ===
-    Provide focused code context for conversations without overwhelming the agent.
-
-    === INPUT ===
-    repo: GitHub repository object
-    file_path: Path to file in repository
-    commit_sha: Specific commit to fetch from
-    line_number: Target line number (1-indexed)
-    context_lines: Number of lines before/after to include (default: 5)
-
-    === OUTPUT ===
-    String containing code snippet with line numbers, or error message
-
-    === LOGIC FLOW ===
-    TRY to fetch file contents
-    IF file not found THEN
-        RETURN "[File not found or deleted]"
-
-    SPLIT file into lines
-    CALCULATE start_line = max(1, line_number - context_lines)
-    CALCULATE end_line = min(total_lines, line_number + context_lines)
-
-    BUILD snippet with line numbers:
-        FOR each line from start_line to end_line
-            FORMAT as "{line_num:4d}  {line_content}"
-            IF line_num == line_number THEN
-                ADD highlight marker ">>>"
-
-    RETURN formatted snippet
-
-    === EDGE CASES ===
-    - File deleted: Return placeholder message
-    - Line number out of bounds: Clamp to file boundaries
-    - Binary file: Return "[Binary file]"
-    - Empty file: Return "[Empty file]"
-    """
     # Fetch file contents at specific commit
     file_content = repo.get_contents(file_path, ref=commit_sha)
 
@@ -467,32 +279,6 @@ def _should_create_new_thread(
     db: Session,
     in_reply_to_id: int,
 ) -> tuple[bool, ConversationThread | None]:
-    """
-    Determine if a new conversation thread should be created.
-
-    === PURPOSE ===
-    Handle race conditions where multiple replies arrive before thread is created.
-
-    === INPUT ===
-    db: Database session
-    in_reply_to_id: Comment ID being replied to
-
-    === OUTPUT ===
-    Tuple of (should_create, existing_thread)
-    - (True, None): Create new thread
-    - (False, thread): Use existing thread
-
-    === LOGIC FLOW ===
-    QUERY for existing thread with comment_id = in_reply_to_id
-    IF thread found THEN
-        RETURN (False, thread)
-    ELSE
-        RETURN (True, None)
-
-    === EDGE CASES ===
-    - Duplicate threads: Database unique constraint prevents this
-    - Concurrent creates: Database handles with UPSERT semantics
-    """
     # Query for existing thread with this comment_id
     existing_thread = (
         db.query(ConversationThread)

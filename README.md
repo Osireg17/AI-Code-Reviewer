@@ -1,14 +1,16 @@
 # AI Code Review Agent
 
-Automated GitHub PR code review using Pydantic AI and OpenAI.
+Automated GitHub PR code review using Pydantic AI and OpenAI with multi-turn conversation support.
 
 ## Features
 
-- Automated code review on GitHub pull requests
-- RAG-powered style guide recommendations using Pinecone
-- Inline comments with severity levels (critical, warning, suggestion)
-- Caching mechanism to reduce redundant API calls
-- FastAPI webhook server for GitHub integration
+- **Automated PR Code Review**: AI-powered analysis of pull request changes with inline comments
+- **Multi-turn Conversations**: Developers can reply to bot comments and get contextual responses
+- **RAG-Powered Recommendations**: Style guide citations from PEP 8, Airbnb JS, OWASP using Pinecone
+- **Code Context Awareness**: Bot tracks conversation history and code changes between commits
+- **Severity Classification**: Comments categorized as critical, warning, or suggestion
+- **Efficient Queue System**: Background processing with Redis and RQ for reliable webhook handling
+- **FastAPI Webhook Server**: Handles GitHub events for PRs and review comment threads
 
 ## Development Setup
 
@@ -115,51 +117,94 @@ PINECONE_INDEX_NAME=code-style-guides
 
 ## Architecture
 
-The system follows a layered architecture with clear separation of concerns:
+The system follows a layered architecture with two main workflows:
+
+### System Diagram
 
 ```mermaid
 flowchart TB
-    subgraph SourceControl["GitHub"]
-        PR_EVENT["PR Event"]
+    subgraph GitHub["GitHub"]
+        PR_EVENT["Pull Request Event<br/>(opened/synchronized)"]
+        REPLY_EVENT["Comment Reply Event<br/>(in_reply_to_id present)"]
         COMMENT_API["Comments API"]
     end
 
     subgraph Railway["Railway Deployment"]
-        WEBHOOK["FastAPI Webhook<br/>(Enqueuer)"]
-        REDIS[("Redis Queue<br/>• Events persisted<br/>• Retry config")]
-        WORKER["RQ Worker Process<br/>• Pull & process<br/>• Auto-retry failures"]
+        WEBHOOK["FastAPI Webhook Router<br/>• PR reviews → Queue<br/>• Comment replies → Direct"]
+        REDIS[("Redis Queue<br/>• PR review jobs<br/>• Retry on failure")]
+        WORKER["RQ Worker<br/>• Background PR reviews"]
+        DATABASE[("PostgreSQL<br/>• Conversation threads<br/>• Message history")]
     end
 
-    subgraph ProcessingLayer["Review Processing"]
-        REVIEW_ENGINE["Review Engine"]
-        AI_AGENT["AI Agent + Tools"]
+    subgraph ReviewWorkflow["PR Review Workflow"]
+        REVIEW_HANDLER["PR Review Handler"]
+        CODE_AGENT["Code Review Agent<br/>• Analyze diffs<br/>• RAG lookup<br/>• Post comments"]
+    end
+
+    subgraph ConversationWorkflow["Conversation Workflow"]
+        CONV_HANDLER["Conversation Handler<br/>• Load thread from DB<br/>• Fetch code context<br/>• Detect changes"]
+        CONV_AGENT["Conversation Agent<br/>• Answer questions<br/>• Compare versions<br/>• Fetch snippets"]
     end
 
     subgraph External["External Services"]
-        GITHUB_API["GitHub API"]
-        OPENAI["OpenAI API"]
-        PINECONE["Pinecone"]
+        GITHUB_API["GitHub API<br/>• Fetch files/diffs<br/>• Post comments"]
+        OPENAI["OpenAI GPT-4<br/>• Code analysis<br/>• Conversations"]
+        PINECONE["Pinecone Vector DB<br/>• Style guide RAG<br/>• PEP 8, Airbnb JS, OWASP"]
     end
 
-    PR_EVENT -->|"HTTP POST"| WEBHOOK
-    WEBHOOK -->|"Enqueue job<br/>(instant response)"| REDIS
-    REDIS -->|"Pull job"| WORKER
-    WORKER -->|"Execute"| REVIEW_ENGINE
-    REVIEW_ENGINE --> AI_AGENT
-    AI_AGENT --> GITHUB_API
-    AI_AGENT --> OPENAI
-    AI_AGENT --> PINECONE
-    REVIEW_ENGINE -->|"Post results"| COMMENT_API
+    %% PR Review Flow
+    PR_EVENT -->|"1. HTTP POST"| WEBHOOK
+    WEBHOOK -->|"2. Enqueue job"| REDIS
+    REDIS -->|"3. Pull job"| WORKER
+    WORKER -->|"4. Execute"| REVIEW_HANDLER
+    REVIEW_HANDLER --> CODE_AGENT
+    CODE_AGENT --> GITHUB_API
+    CODE_AGENT --> OPENAI
+    CODE_AGENT --> PINECONE
+    REVIEW_HANDLER -->|"5. Post review"| COMMENT_API
+    REVIEW_HANDLER -.->|"Store initial context"| DATABASE
 
-    style REDIS fill:#ffcccc,stroke:#ff0000
-    style WORKER fill:#ccffcc,stroke:#00ff00
+    %% Conversation Flow
+    REPLY_EVENT -->|"1. HTTP POST"| WEBHOOK
+    WEBHOOK -->|"2. Direct call"| CONV_HANDLER
+    CONV_HANDLER <-->|"3. Load/save thread"| DATABASE
+    CONV_HANDLER --> CONV_AGENT
+    CONV_AGENT -->|"Fetch code/thread"| GITHUB_API
+    CONV_AGENT --> OPENAI
+    CONV_HANDLER -->|"4. Post reply"| COMMENT_API
+
+    style REDIS fill:#ffe6e6,stroke:#cc0000,stroke-width:2px
+    style DATABASE fill:#e6f3ff,stroke:#0066cc,stroke-width:2px
+    style CODE_AGENT fill:#e6ffe6,stroke:#00cc00,stroke-width:2px
+    style CONV_AGENT fill:#fff0e6,stroke:#ff9900,stroke-width:2px
 ```
 
-- **Agent**: `src/agents/code_reviewer.py` - Pydantic AI agent with tool registration
-- **Tools**: `src/tools/` - GitHub API and RAG search tools
-- **Services**: `src/services/` - RAG, authentication, and business logic
-- **API**: `src/api/webhooks.py` - FastAPI webhook handlers
-- **Models**: `src/models/` - Pydantic models for data validation
+### Component Overview
+
+**Agents:**
+- `src/agents/code_reviewer.py` - PR review agent with GitHub and RAG tools
+- `src/agents/conversation_agent.py` - Multi-turn conversation agent with code context tools
+
+**Handlers:**
+- `src/api/handlers/pr_review_handler.py` - Processes new PR reviews (queued)
+- `src/api/handlers/conversation_handler.py` - Processes comment replies (synchronous)
+
+**Tools:**
+- `src/tools/github_tools.py` - GitHub API operations (fetch files, diffs, post comments)
+- `src/tools/rag_tools.py` - Pinecone vector search for style guides
+- `src/tools/conversation_tools.py` - Code snippet fetching, version comparison, thread retrieval
+
+**Services:**
+- `src/services/github_auth.py` - GitHub App JWT authentication
+- `src/services/rag_service.py` - Pinecone integration and document indexing
+
+**Database:**
+- `src/models/conversation.py` - ConversationThread model for tracking multi-turn discussions
+- `src/database/db.py` - SQLAlchemy session management
+
+**API:**
+- `src/api/webhooks.py` - FastAPI webhook router for GitHub events
+- `src/queue/config.py` - Redis and RQ configuration for background jobs
 
 ## Deployment
 

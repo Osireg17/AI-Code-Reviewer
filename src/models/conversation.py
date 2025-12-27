@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -34,7 +34,7 @@ class ConversationThread(Base):
         Integer, nullable=False, index=True, comment="Pull request number"
     )
     comment_id: Mapped[int] = mapped_column(
-        Integer,
+        BigInteger,
         nullable=False,
         unique=True,
         index=True,

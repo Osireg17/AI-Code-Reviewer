@@ -10,7 +10,7 @@ from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.prompts.code_reviewer_prompt import SYSTEM_PROMPT
-from src.tools import github_tools, rag_tools
+from src.tools import conversation_tools, github_tools, rag_tools
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,72 @@ async def search_style_guides(
         search_style_guides(query="naming conventions for constants", language="java")
     """
     return await rag_tools.search_style_guides(ctx, query, language, top_k)
+
+
+@code_review_agent.tool
+async def suggest_code_fix(
+    ctx: RunContext[ReviewDependencies],
+    explanation: str,
+    new_code: str,
+    issue_category: str,
+    file_path: str,
+) -> str:
+    """
+    Format a code fix as GitHub's suggestion markdown with "Commit suggestion" button.
+
+    Use this tool ONLY when you've identified a CLEAR violation of coding conventions
+    (e.g., PEP 8 naming, style guide rules) and want to provide a ready-to-commit fix.
+
+    You (the agent) must generate the corrected code using your reasoning, then call
+    this tool to format it as a GitHub suggestion with RAG-backed citations.
+
+    Args:
+        explanation: Description of the violation (e.g., "Variable name violates PEP 8 snake_case convention")
+        new_code: The corrected code you've generated (e.g., "user_data = get_user_info()")
+        issue_category: Type of issue (e.g., "naming", "type_hint", "import", "formatting")
+        file_path: Path to the file being reviewed (e.g., "src/main.py") - used for language detection
+
+    Returns:
+        Formatted GitHub suggestion markdown with citation (if RAG finds relevant style guide)
+
+    When to use:
+        ✅ Clear naming convention violations (camelCase → snake_case in Python)
+        ✅ Missing/incorrect type hints with obvious fixes
+        ✅ Import ordering/formatting per style guide
+        ✅ Simple formatting issues (quotes, spacing)
+
+    When NOT to use:
+        ❌ Complex refactoring or architectural changes
+        ❌ Business logic modifications
+        ❌ Subjective style preferences without style guide backing
+        ❌ Multi-line changes affecting control flow
+
+    Example usage:
+        Reviewing file: src/utils.py
+        User has: userData = getUserInfo()
+        Agent reasoning: Variable violates PEP 8, should be user_data
+        -> Call suggest_code_fix(
+            explanation="Variable name violates PEP 8 snake_case convention",
+            new_code="user_data = get_user_info()",
+            issue_category="naming",
+            file_path="src/utils.py"
+        )
+
+    Output: GitHub renders inline suggestion with "Commit suggestion" button
+    """
+    # DELEGATE to conversation_tools.suggest_code_fix (shared implementation)
+    # This will:
+    # - DETECT language from file_path
+    # - SEARCH RAG for style guide citations
+    # - FORMAT as GitHub suggestion markdown
+    # - RETURN formatted string
+    return await conversation_tools.suggest_code_fix(
+        ctx=ctx,
+        explanation=explanation,
+        new_code=new_code,
+        issue_category=issue_category,
+        file_path=file_path,
+    )
 
 
 @code_review_agent.system_prompt

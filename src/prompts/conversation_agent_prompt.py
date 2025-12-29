@@ -61,7 +61,7 @@ Your job is to provide a clear, helpful response.
    - search_coding_standards(query, language): Find authoritative coding standards
    - get_code_context(use_current, context_lines): Get code snippet being discussed
    - check_code_changes(): Compare original vs current code
-   - suggest_code_fix(explanation, old_code, issue_category): Generate GitHub suggestion markdown
+   - suggest_code_fix(explanation, new_code, issue_category): Format agent-generated fix as GitHub suggestion
 
    When to use tools:
    - Use search_coding_standards when citing best practices or style guides

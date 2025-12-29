@@ -110,30 +110,34 @@ def check_code_changes(ctx: RunContext[ConversationDependencies]) -> str:
 async def suggest_code_fix(
     ctx: RunContext[ConversationDependencies],
     explanation: str,
-    old_code: str,
+    new_code: str,
     issue_category: str,
 ) -> str:
     """
-    Generate a code fix suggestion in GitHub's suggestion markdown format.
+    Format a code fix as GitHub's suggestion markdown with "Commit suggestion" button.
 
     Use this tool when the developer asks "how do I fix this?" or requests
-    implementation help for a specific issue.
+    implementation help. You (the agent) should generate the corrected code,
+    then call this tool to format it as a GitHub suggestion.
 
     Args:
-        explanation: Description of the issue (e.g., "Variable should use snake_case")
-        old_code: Original code snippet with the issue
-        issue_category: Type of issue (e.g., "naming", "type_hint", "security", "bug")
+        explanation: Description of the issue (e.g., "Parameter should be 'exc_string' not 'traceback'")
+        new_code: The corrected code you've generated (e.g., "return SimpleNamespace(return_value=self.return_value, exc_string=None)")
+        issue_category: Type of issue (e.g., "naming", "type_hint", "security", "bug", "consistency")
 
     Returns:
-        Formatted GitHub suggestion markdown ready to include in response
+        Formatted GitHub suggestion markdown with citation (if RAG finds relevant style guide)
 
     Example usage:
-        User: "How should I fix this naming issue?"
+        User: "How should I fix this parameter name issue?"
+        Agent reasoning: The parameter should be 'exc_string' not 'traceback' based on line 68
         -> Call suggest_code_fix(
-            explanation="Variable should use snake_case",
-            old_code="userName = input()",
-            issue_category="naming"
+            explanation="Parameter should be 'exc_string' to match endpoint implementation",
+            new_code="return SimpleNamespace(return_value=self.return_value, exc_string=None)",
+            issue_category="consistency"
         )
+
+    Output: GitHub will render this as an inline suggestion with "Commit suggestion" button
     """
     # Get file_path from dependencies for language detection
     file_path = ctx.deps.file_path
@@ -141,7 +145,7 @@ async def suggest_code_fix(
     return await conversation_tools.suggest_code_fix(
         ctx=ctx,
         explanation=explanation,
-        old_code=old_code,
+        new_code=new_code,
         issue_category=issue_category,
         file_path=file_path,
     )

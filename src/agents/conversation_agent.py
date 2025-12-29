@@ -268,9 +268,6 @@ def check_code_changes(ctx: RunContext[ConversationDependencies]) -> str:
 """
 
 
-# === VALIDATION ===
-
-
 def validate_conversation_response(response: str) -> str:
     """
     Validate and sanitize agent response before posting to GitHub.

@@ -193,8 +193,6 @@ flowchart TB
 **Tools:**
 - `src/tools/github_tools.py` - GitHub API operations (fetch files, diffs, post comments)
 - `src/tools/rag_tools.py` - Pinecone vector search for style guides
-- `src/tools/conversation_tools.py` - Code snippet fetching, version comparison, thread retrieval
-
 **Services:**
 - `src/services/github_auth.py` - GitHub App JWT authentication
 - `src/services/rag_service.py` - Pinecone integration and document indexing

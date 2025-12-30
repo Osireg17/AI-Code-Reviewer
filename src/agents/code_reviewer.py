@@ -141,9 +141,6 @@ async def post_summary_comment(
     return await github_tools.post_summary_comment(ctx, summary, approval_status)
 
 
-# Register RAG tool
-
-
 @code_review_agent.tool
 async def search_style_guides(
     ctx: RunContext[ReviewDependencies],

@@ -1,6 +1,8 @@
 import logging
+import os
 
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from src.config.settings import settings
 from src.models.dependencies import ConversationDependencies
@@ -10,8 +12,21 @@ from src.tools import conversation_tools
 
 logger = logging.getLogger(__name__)
 
+# Set OpenAI API key as environment variable for Pydantic AI
+if settings.openai_api_key:
+    os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+
+# Future Extension (Statefulness):
+#   To enable stateful conversations with previous_response_id:
+#   1. Create model_settings = OpenAIResponsesModelSettings(store=True)
+#   2. Pass model_settings to Agent constructor
+#   3. Pass previous_response_id from result.all_messages()[-1].provider_response_id
+#   4. Benefits: Model remembers context across turns without resending full history
+#   5. Example in Pydantic AI docs: https://ai.pydantic.dev/models/openai/#referencing-earlier-responses
+responses_model = OpenAIResponsesModel("gpt-5")
+
 conversation_agent = Agent[ConversationDependencies, str](
-    model=settings.openai_model,
+    model=responses_model,
     system_prompt=SYSTEM_PROMPT,
     deps_type=ConversationDependencies,
 )

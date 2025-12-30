@@ -5,6 +5,7 @@ import os
 from typing import cast
 
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
@@ -19,9 +20,18 @@ logger = logging.getLogger(__name__)
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
+# Future Extension (Statefulness):
+#   To enable stateful multi-file reviews with previous_response_id:
+#   1. Create model_settings = OpenAIResponsesModelSettings(store=True)
+#   2. Pass model_settings to Agent constructor
+#   3. Pass previous_response_id from previous file review to next file
+#   4. Benefits: Agent remembers context across files in same PR review
+#   5. Example: Review file 1 → get response_id → pass to file 2 review
+responses_model = OpenAIResponsesModel("gpt-5")
+
 # Create the code review agent
 code_review_agent = Agent(
-    model=f"openai:{settings.openai_model}",
+    model=responses_model,
     deps_type=ReviewDependencies,
     output_type=CodeReviewResult,
     system_prompt=SYSTEM_PROMPT,

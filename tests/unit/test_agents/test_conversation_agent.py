@@ -13,8 +13,6 @@ from src.agents.conversation_agent import (
 )
 from src.models.dependencies import ConversationDependencies
 
-# === FIXTURES ===
-
 
 @pytest.fixture
 def conversation_deps():

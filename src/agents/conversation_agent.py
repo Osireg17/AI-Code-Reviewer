@@ -132,8 +132,9 @@ def get_full_file(ctx: RunContext[ConversationDependencies], ref: str = "head") 
     Returns:
         Full file content as a string with line numbers
 
-    Note: This may use significant tokens for large files. Use get_code_context
-    for small snippets when possible.
+    IMPORTANT: Max 500 lines will be returned. For files >500 lines, you'll get the
+    first 250 lines (imports, top-level structure) and last 250 lines (bottom of file).
+    For targeted snippets, use get_code_context instead.
     """
     deps = ctx.deps
 
@@ -161,15 +162,53 @@ def get_full_file(ctx: RunContext[ConversationDependencies], ref: str = "head") 
         except UnicodeDecodeError:
             return f"[Error: {deps.file_path} is a binary file]"
 
-        # Add line numbers for easier reference
+        # Split into lines
         lines = file_content.split("\n")
-        numbered_lines = [f"{i + 1:4d} | {line}" for i, line in enumerate(lines)]
-        numbered_content = "\n".join(numbered_lines)
+        total_lines = len(lines)
 
-        logger.info(
-            f"Retrieved full content of {deps.file_path} at {ref} "
-            f"({len(file_content)} bytes, {len(lines)} lines)"
-        )
+        # Handle large files (>500 lines) - show first 250 + last 250
+        max_lines = 500
+        if total_lines > max_lines:
+            first_n = 250
+            last_n = 250
+            omitted_count = total_lines - (first_n + last_n)
+
+            # Get first 250 lines
+            visible_lines = lines[:first_n]
+
+            # Add truncation indicator
+            visible_lines.extend(
+                [
+                    "",
+                    "=" * 80,
+                    f"[File truncated - {omitted_count} lines omitted (lines {first_n + 1}-{total_lines - last_n})]",
+                    f"[Total file size: {total_lines} lines]",
+                    "[Use get_code_context for specific sections in the middle]",
+                    "=" * 80,
+                    "",
+                ]
+            )
+
+            # Add last 250 lines
+            visible_lines.extend(lines[-last_n:])
+
+            logger.info(
+                f"Retrieved truncated content of {deps.file_path} at {ref} "
+                f"({total_lines} lines total, showing first {first_n} + last {last_n})"
+            )
+        else:
+            # File is small enough - show everything
+            visible_lines = lines
+            logger.info(
+                f"Retrieved full content of {deps.file_path} at {ref} "
+                f"({len(file_content)} bytes, {total_lines} lines)"
+            )
+
+        # Add line numbers for easier reference
+        numbered_lines = [
+            f"{i + 1:4d} | {line}" for i, line in enumerate(visible_lines)
+        ]
+        numbered_content = "\n".join(numbered_lines)
 
         return f"```\n{numbered_content}\n```"
 

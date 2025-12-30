@@ -1,10 +1,13 @@
 """Test RAG service with sample queries."""
+
 import asyncio
-import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from src.config.settings import settings
+from src.services.rag_service import rag_service
 
 # Load environment variables
 env_path = Path(__file__).parent.parent / ".env.local"
@@ -12,9 +15,6 @@ load_dotenv(env_path)
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.config.settings import settings
-from src.services.rag_service import rag_service
 
 
 async def test_rag_queries():
@@ -59,7 +59,9 @@ async def test_rag_queries():
             if results:
                 print(f"Found {len(results)} results:\n")
                 for j, result in enumerate(results, 1):
-                    print(f"  [{j}] {result['metadata'].get('source')} ({result['metadata'].get('language')})")
+                    print(
+                        f"  [{j}] {result['metadata'].get('source')} ({result['metadata'].get('language')})"
+                    )
                     print(f"      Similarity: {result['similarity']:.2%}")
                     print(f"      Preview: {result['content'][:120]}...\n")
             else:

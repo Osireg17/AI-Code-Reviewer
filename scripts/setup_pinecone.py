@@ -1,4 +1,5 @@
 """Setup Pinecone index for RAG knowledge base."""
+
 import os
 import sys
 from pathlib import Path
@@ -51,8 +52,8 @@ def setup_pinecone_index():
         metric="cosine",
         spec=ServerlessSpec(
             cloud="aws",
-            region="us-east-1"  # Closest to Railway US deployments
-        )
+            region="us-east-1",  # Closest to Railway US deployments
+        ),
     )
 
     print(f" Index '{index_name}' created successfully!")

@@ -8,6 +8,7 @@ from pydantic_ai import RunContext
 from src.agents.conversation_agent import (
     check_code_changes,
     get_code_context,
+    get_full_file,
     search_coding_standards,
     validate_conversation_response,
 )
@@ -31,6 +32,9 @@ def conversation_deps():
         code_changed=True,
         pr_number=123,
         repo_name="owner/repo",
+        repo=None,  # Will be set in tests that need it
+        pr=None,  # Will be set in tests that need it
+        github_client=None,  # Will be set in tests that need it
     )
 
 
@@ -40,9 +44,6 @@ def mock_run_context(conversation_deps):
     context = MagicMock(spec=RunContext)
     context.deps = conversation_deps
     return context
-
-
-# === TOOL TESTS ===
 
 
 class TestSearchCodingStandards:
@@ -163,9 +164,6 @@ class TestCheckCodeChanges:
         assert result == "Code has been modified, but details are not available."
 
 
-# === VALIDATION TESTS ===
-
-
 class TestValidateConversationResponse:
     """Tests for validate_conversation_response function."""
 
@@ -210,3 +208,143 @@ class TestValidateConversationResponse:
 
         assert len(result) == 2000
         assert "[Response truncated" not in result
+
+
+class TestGetFullFile:
+    """Tests for get_full_file tool."""
+
+    def test_get_full_file_success_head(self, mock_run_context):
+        """Test successful retrieval of full file content at head."""
+        # Setup mock dependencies
+        mock_repo = MagicMock()
+        mock_pr = MagicMock()
+        mock_pr.head.sha = "abc123"
+        mock_pr.base.sha = "def456"
+        mock_github_client = MagicMock()
+
+        mock_run_context.deps.repo = mock_repo
+        mock_run_context.deps.pr = mock_pr
+        mock_run_context.deps.github_client = mock_github_client
+
+        # Mock file content
+        mock_content = MagicMock()
+        mock_content.decoded_content = b"def helper():\n    pass\n"
+        mock_repo.get_contents.return_value = mock_content
+
+        result = get_full_file(mock_run_context, ref="head")
+
+        assert "def helper():" in result
+        assert "pass" in result
+        mock_repo.get_contents.assert_called_once_with(
+            "src/utils/helpers.py", ref="abc123"
+        )
+
+    def test_get_full_file_success_base(self, mock_run_context):
+        """Test successful retrieval of full file content at base."""
+        # Setup mock dependencies
+        mock_repo = MagicMock()
+        mock_pr = MagicMock()
+        mock_pr.head.sha = "abc123"
+        mock_pr.base.sha = "def456"
+        mock_github_client = MagicMock()
+
+        mock_run_context.deps.repo = mock_repo
+        mock_run_context.deps.pr = mock_pr
+        mock_run_context.deps.github_client = mock_github_client
+
+        # Mock file content
+        mock_content = MagicMock()
+        mock_content.decoded_content = b"def old_helper():\n    pass\n"
+        mock_repo.get_contents.return_value = mock_content
+
+        result = get_full_file(mock_run_context, ref="base")
+
+        assert "old_helper():" in result
+        mock_repo.get_contents.assert_called_once_with(
+            "src/utils/helpers.py", ref="def456"
+        )
+
+    def test_get_full_file_missing_context(self, mock_run_context):
+        """Test when GitHub context is not available."""
+        mock_run_context.deps.repo = None
+        mock_run_context.deps.pr = None
+        mock_run_context.deps.github_client = None
+
+        result = get_full_file(mock_run_context)
+
+        assert "[Error: GitHub context not available]" in result
+
+    def test_get_full_file_invalid_ref(self, mock_run_context):
+        """Test with invalid ref parameter."""
+        # Setup minimal mock dependencies
+        mock_run_context.deps.repo = MagicMock()
+        mock_run_context.deps.pr = MagicMock()
+        mock_run_context.deps.github_client = MagicMock()
+
+        result = get_full_file(mock_run_context, ref="invalid")
+
+        assert "[Error: Invalid ref 'invalid'" in result
+
+    def test_get_full_file_is_directory(self, mock_run_context):
+        """Test when path is a directory, not a file."""
+        # Setup mock dependencies
+        mock_repo = MagicMock()
+        mock_pr = MagicMock()
+        mock_pr.head.sha = "abc123"
+
+        mock_run_context.deps.repo = mock_repo
+        mock_run_context.deps.pr = mock_pr
+        mock_run_context.deps.github_client = MagicMock()
+
+        # Mock directory (returns list)
+        mock_repo.get_contents.return_value = [MagicMock(), MagicMock()]
+
+        result = get_full_file(mock_run_context)
+
+        assert "[Error:" in result
+        assert "is a directory" in result
+
+    def test_get_full_file_binary_file(self, mock_run_context):
+        """Test when file is binary and can't be decoded."""
+        # Setup mock dependencies
+        mock_repo = MagicMock()
+        mock_pr = MagicMock()
+        mock_pr.head.sha = "abc123"
+
+        mock_run_context.deps.repo = mock_repo
+        mock_run_context.deps.pr = mock_pr
+        mock_run_context.deps.github_client = MagicMock()
+
+        # Mock binary file content that raises UnicodeDecodeError when decoded
+        mock_content = MagicMock()
+        # Create a mock bytes object that raises error on decode
+        mock_decoded_content = MagicMock(spec=bytes)
+        mock_decoded_content.decode.side_effect = UnicodeDecodeError(
+            "utf-8", b"", 0, 1, "invalid start byte"
+        )
+        mock_content.decoded_content = mock_decoded_content
+        mock_repo.get_contents.return_value = mock_content
+
+        result = get_full_file(mock_run_context)
+
+        assert "[Error:" in result
+        assert "is a binary file" in result
+
+    def test_get_full_file_exception(self, mock_run_context):
+        """Test when an exception occurs during file retrieval."""
+        # Setup mock dependencies
+        mock_repo = MagicMock()
+        mock_pr = MagicMock()
+        mock_pr.head.sha = "abc123"
+
+        mock_run_context.deps.repo = mock_repo
+        mock_run_context.deps.pr = mock_pr
+        mock_run_context.deps.github_client = MagicMock()
+
+        # Mock exception
+        mock_repo.get_contents.side_effect = Exception("Network error")
+
+        result = get_full_file(mock_run_context)
+
+        assert "[Error: Could not retrieve file" in result
+        assert "Network error" in result

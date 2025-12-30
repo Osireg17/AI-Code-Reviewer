@@ -19,7 +19,7 @@ if settings.openai_api_key:
 # Future Extension (Statefulness):
 #   To enable stateful conversations with previous_response_id:
 #   1. Create model_settings = OpenAIResponsesModelSettings(store=True)
-#   2. Pass model_settings to Agent constructor
+responses_model = OpenAIResponsesModel(settings.openai_model)
 #   3. Pass previous_response_id from result.all_messages()[-1].provider_response_id
 #   4. Benefits: Model remembers context across turns without resending full history
 #   5. Example in Pydantic AI docs: https://ai.pydantic.dev/models/openai/#referencing-earlier-responses

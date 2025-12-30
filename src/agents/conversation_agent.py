@@ -23,8 +23,6 @@ responses_model = OpenAIResponsesModel(settings.openai_model)
 #   3. Pass previous_response_id from result.all_messages()[-1].provider_response_id
 #   4. Benefits: Model remembers context across turns without resending full history
 #   5. Example in Pydantic AI docs: https://ai.pydantic.dev/models/openai/#referencing-earlier-responses
-responses_model = OpenAIResponsesModel("gpt-5")
-
 conversation_agent = Agent[ConversationDependencies, str](
     model=responses_model,
     instructions=SYSTEM_PROMPT,

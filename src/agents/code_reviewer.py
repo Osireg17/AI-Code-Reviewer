@@ -27,7 +27,6 @@ if settings.openai_api_key:
 responses_model = OpenAIResponsesModel(settings.openai_model)
 #   4. Benefits: Agent remembers context across files in same PR review
 #   5. Example: Review file 1 → get response_id → pass to file 2 review
-responses_model = OpenAIResponsesModel("gpt-5")
 
 code_review_agent = Agent(
     model=responses_model,
@@ -265,9 +264,9 @@ async def suggest_code_fix(
     )
 
 
-@code_review_agent.system_prompt
+@code_review_agent.instructions
 async def add_dynamic_context(ctx: RunContext[ReviewDependencies]) -> str:
-    """Add dynamic context based on PR metadata.
+    """Add dynamic instructions based on PR metadata.
 
     Provides repo-specific information and constraints to the agent
     based on the current ReviewDependencies.
@@ -276,7 +275,7 @@ async def add_dynamic_context(ctx: RunContext[ReviewDependencies]) -> str:
         ctx: Run context with ReviewDependencies
 
     Returns:
-        Additional system prompt text with dynamic context
+        Additional instructions text with dynamic context
     """
     max_files = settings.max_files_per_review
 

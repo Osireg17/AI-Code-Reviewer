@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(
         default=None, description="OpenAI API key for AI models"
     )
-    openai_model: str = Field(default="gpt-4.1-nano", description="OpenAI model to use")
+    openai_model: str = Field(default="gpt-5", description="OpenAI model to use")
 
     # GitHub Configuration
     # Note: GitHub Actions doesn't allow env var names starting with GITHUB_

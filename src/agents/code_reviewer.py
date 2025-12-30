@@ -183,42 +183,60 @@ async def suggest_code_fix(
     """
     Format a code fix as GitHub's suggestion markdown with "Commit suggestion" button.
 
-    Use this tool ONLY when you've identified a CLEAR violation of coding conventions
-    (e.g., PEP 8 naming, style guide rules) and want to provide a ready-to-commit fix.
+    Use this tool to provide ready-to-commit fixes for bugs, security issues, code
+    improvements, and convention violations. Helps developers move faster by allowing
+    them to commit fixes directly from GitHub without switching to their IDE.
 
     You (the agent) must generate the corrected code using your reasoning, then call
-    this tool to format it as a GitHub suggestion with RAG-backed citations.
+    this tool to format it as a GitHub suggestion with optional RAG-backed citations.
 
     Args:
-        explanation: Description of the violation (e.g., "Variable name violates PEP 8 snake_case convention")
-        new_code: The corrected code you've generated (e.g., "user_data = get_user_info()")
-        issue_category: Type of issue (e.g., "naming", "type_hint", "import", "formatting")
+        explanation: Clear description of the issue and why the fix is needed
+        new_code: The corrected code (single or multiple lines with proper indentation)
+        issue_category: Type of issue - one of: "bug", "security", "naming", "type_hint",
+                       "import", "improvement", "performance", "best_practice", "formatting"
         file_path: Path to the file being reviewed (e.g., "src/main.py") - used for language detection
 
     Returns:
-        Formatted GitHub suggestion markdown with citation (if RAG finds relevant style guide)
+        Formatted GitHub suggestion markdown with optional RAG citation
 
-    When to use:
-        ✅ Clear naming convention violations (camelCase → snake_case in Python)
-        ✅ Missing/incorrect type hints with obvious fixes
-        ✅ Import ordering/formatting per style guide
-        ✅ Simple formatting issues (quotes, spacing)
+    When to use (broad scope):
+        ✅ Bug fixes (null checks, off-by-one errors, logic bugs)
+        ✅ Security issues (SQL injection, XSS, hardcoded secrets)
+        ✅ Naming convention violations
+        ✅ Type hints (missing or incorrect)
+        ✅ Import issues (ordering, unused, missing)
+        ✅ Code improvements (better idioms, simplified logic)
+        ✅ Performance issues (obvious inefficiencies)
+        ✅ Best practices (context managers, early returns)
+        ✅ Formatting & style (quotes, spacing, line length)
 
     When NOT to use:
-        ❌ Complex refactoring or architectural changes
-        ❌ Business logic modifications
-        ❌ Subjective style preferences without style guide backing
-        ❌ Multi-line changes affecting control flow
+        ❌ Architectural changes across multiple files
+        ❌ Business logic you don't fully understand
+        ❌ Changes requiring broader system context
+        ❌ Subjective preferences without style guide backing
 
-    Example usage:
-        Reviewing file: src/utils.py
-        User has: userData = getUserInfo()
-        Agent reasoning: Variable violates PEP 8, should be user_data
+    Example usage (bug fix):
+        File: src/handlers.py
+        Original: if user: process(user.name)
+        Issue: Missing null check for user.name
         -> Call suggest_code_fix(
-            explanation="Variable name violates PEP 8 snake_case convention",
-            new_code="user_data = get_user_info()",
-            issue_category="naming",
-            file_path="src/utils.py"
+            explanation="Missing check for user.name attribute. This will raise AttributeError if name is None.",
+            new_code="if user and user.name:\n    process(user.name)",
+            issue_category="bug",
+            file_path="src/handlers.py"
+        )
+
+    Example usage (security fix):
+        File: src/database.py
+        Original: query = f"SELECT * FROM users WHERE id = {user_id}"
+        Issue: SQL injection vulnerability
+        -> Call suggest_code_fix(
+            explanation="SQL injection vulnerability. User input should be parameterized.",
+            new_code='query = "SELECT * FROM users WHERE id = ?"',
+            issue_category="security",
+            file_path="src/database.py"
         )
 
     Output: GitHub renders inline suggestion with "Commit suggestion" button

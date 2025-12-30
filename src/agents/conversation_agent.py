@@ -16,13 +16,8 @@ logger = logging.getLogger(__name__)
 if settings.openai_api_key:
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-# Future Extension (Statefulness):
-#   To enable stateful conversations with previous_response_id:
-#   1. Create model_settings = OpenAIResponsesModelSettings(store=True)
 responses_model = OpenAIResponsesModel(settings.openai_model)
-#   3. Pass previous_response_id from result.all_messages()[-1].provider_response_id
-#   4. Benefits: Model remembers context across turns without resending full history
-#   5. Example in Pydantic AI docs: https://ai.pydantic.dev/models/openai/#referencing-earlier-responses
+
 conversation_agent = Agent[ConversationDependencies, str](
     model=responses_model,
     instructions=SYSTEM_PROMPT,
@@ -117,6 +112,109 @@ def check_code_changes(ctx: RunContext[ConversationDependencies]) -> str:
 {deps.current_code_snippet}
 ```
 """
+
+
+@conversation_agent.tool
+def get_full_file(ctx: RunContext[ConversationDependencies], ref: str = "head") -> str:
+    """
+    Get the complete file content at head or base revision.
+
+    Use this tool when you need to see the full file context beyond the snippet,
+    for example to:
+    - Check if an import is used elsewhere in the file
+    - Understand the broader context of a function
+    - Verify class structure or module organization
+    - See all usages of a variable or function
+
+    Args:
+        ref: Which version to get - "head" (current PR code) or "base" (target branch code)
+
+    Returns:
+        Full file content as a string with line numbers
+
+    IMPORTANT: Max 500 lines will be returned. For files >500 lines, you'll get the
+    first 250 lines (imports, top-level structure) and last 250 lines (bottom of file).
+    For targeted snippets, use get_code_context instead.
+    """
+    deps = ctx.deps
+
+    if not deps.repo or not deps.pr or not deps.github_client:
+        return "[Error: GitHub context not available]"
+
+    # Validate ref
+    if ref not in ("head", "base"):
+        return f"[Error: Invalid ref '{ref}', must be 'head' or 'base']"
+
+    try:
+        # Determine SHA based on ref
+        sha = deps.pr.head.sha if ref == "head" else deps.pr.base.sha
+
+        # Get file content from GitHub
+        content = deps.repo.get_contents(deps.file_path, ref=sha)
+
+        # Handle directory case
+        if isinstance(content, list):
+            return f"[Error: {deps.file_path} is a directory, not a file]"
+
+        # Decode content
+        try:
+            file_content = content.decoded_content.decode("utf-8")
+        except UnicodeDecodeError:
+            return f"[Error: {deps.file_path} is a binary file]"
+
+        # Split into lines
+        lines = file_content.split("\n")
+        total_lines = len(lines)
+
+        # Handle large files (>500 lines) - show first 250 + last 250
+        max_lines = 500
+        if total_lines > max_lines:
+            first_n = 250
+            last_n = 250
+            omitted_count = total_lines - (first_n + last_n)
+
+            # Get first 250 lines
+            visible_lines = lines[:first_n]
+
+            # Add truncation indicator
+            visible_lines.extend(
+                [
+                    "",
+                    "=" * 80,
+                    f"[File truncated - {omitted_count} lines omitted (lines {first_n + 1}-{total_lines - last_n})]",
+                    f"[Total file size: {total_lines} lines]",
+                    "[Use get_code_context for specific sections in the middle]",
+                    "=" * 80,
+                    "",
+                ]
+            )
+
+            # Add last 250 lines
+            visible_lines.extend(lines[-last_n:])
+
+            logger.info(
+                f"Retrieved truncated content of {deps.file_path} at {ref} "
+                f"({total_lines} lines total, showing first {first_n} + last {last_n})"
+            )
+        else:
+            # File is small enough - show everything
+            visible_lines = lines
+            logger.info(
+                f"Retrieved full content of {deps.file_path} at {ref} "
+                f"({len(file_content)} bytes, {total_lines} lines)"
+            )
+
+        # Add line numbers for easier reference
+        numbered_lines = [
+            f"{i + 1:4d} | {line}" for i, line in enumerate(visible_lines)
+        ]
+        numbered_content = "\n".join(numbered_lines)
+
+        return f"```\n{numbered_content}\n```"
+
+    except Exception as e:
+        logger.warning(f"Failed to get full file {deps.file_path} at {ref}: {e}")
+        return f"[Error: Could not retrieve file - {str(e)}]"
 
 
 @conversation_agent.tool

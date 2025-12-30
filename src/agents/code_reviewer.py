@@ -24,7 +24,7 @@ if settings.openai_api_key:
 #   To enable stateful multi-file reviews with previous_response_id:
 #   1. Create model_settings = OpenAIResponsesModelSettings(store=True)
 #   2. Pass model_settings to Agent constructor
-#   3. Pass previous_response_id from previous file review to next file
+responses_model = OpenAIResponsesModel(settings.openai_model)
 #   4. Benefits: Agent remembers context across files in same PR review
 #   5. Example: Review file 1 → get response_id → pass to file 2 review
 responses_model = OpenAIResponsesModel("gpt-5")

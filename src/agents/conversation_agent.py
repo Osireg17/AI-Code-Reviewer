@@ -27,7 +27,7 @@ responses_model = OpenAIResponsesModel("gpt-5")
 
 conversation_agent = Agent[ConversationDependencies, str](
     model=responses_model,
-    system_prompt=SYSTEM_PROMPT,
+    instructions=SYSTEM_PROMPT,
     deps_type=ConversationDependencies,
 )
 

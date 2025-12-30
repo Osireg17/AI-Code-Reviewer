@@ -29,12 +29,11 @@ if settings.openai_api_key:
 #   5. Example: Review file 1 → get response_id → pass to file 2 review
 responses_model = OpenAIResponsesModel("gpt-5")
 
-# Create the code review agent
 code_review_agent = Agent(
     model=responses_model,
     deps_type=ReviewDependencies,
     output_type=CodeReviewResult,
-    system_prompt=SYSTEM_PROMPT,
+    instructions=SYSTEM_PROMPT,
     retries=settings.max_retries,
 )
 

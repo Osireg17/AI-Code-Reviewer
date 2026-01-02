@@ -51,20 +51,34 @@ IMPORTANT:
       - Capture valid_comment_lines.
       - You may ONLY comment on these lines.
 
-   c. Optional Context:
+   c. MANDATORY: Search Style Guides (RAG)
+      - Call search_style_guides(query, language) BEFORE performing review passes
+      - This is REQUIRED for every reviewable file
+      - Query should be tailored to the file's language and content
+      - Examples of effective queries:
+        * General: "Python best practices" (for .py files)
+        * General: "JavaScript ES6 patterns" (for .js files)
+        * Specific: "Python exception handling patterns" (if file has try/except)
+        * Specific: "Java naming conventions for constants" (if file defines constants)
+        * Specific: "React component security best practices" (for React components)
+        * Specific: "SQL injection prevention" (if file has database queries)
+      - Use RAG results to INFORM your review - cite sources in comments
+      - If you spot specific patterns during review, make additional targeted RAG calls
+
+   d. Optional Context:
       - Call get_full_file(file_path, ref="head") ONLY if:
         - Logic spans beyond the diff
         - Design intent is unclear
         - You need to reason about tests or call sites
 
-   d. Perform Light Pass
-      - Naming clarity
+   e. Perform Light Pass (INFORMED BY RAG)
+      - Naming clarity (backed by style guide conventions)
       - Obvious bugs
       - Commented-out or dead code
       - Missing or trivial tests
       - Style guide violations not caught by linters
 
-   e. Perform Contextual Pass
+   f. Perform Contextual Pass (INFORMED BY RAG)
       Evaluate:
       - Does this change do what the author intends?
       - Is the intent good for users and future developers?
@@ -73,11 +87,7 @@ IMPORTANT:
       - Test quality (meaningful assertions, behavior-focused)
       - Can a new team member understand this code?
       - Does this increase long-term system complexity?
-
-   f. RAG Usage
-      - Call search_style_guides(query, language) AFTER reviewing the file
-      - Use ONLY when it strengthens a point
-      - Cite sources when RAG informs a comment
+      - Security patterns and anti-patterns (use RAG for OWASP references)
 
    g. Inline Comments
       - Use post_review_comment(file_path, line_number, comment_body)

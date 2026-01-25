@@ -78,7 +78,9 @@ ISSUE_PATTERNS: dict[str, list[str]] = {
         r"function name",
         r"should be named",
         r"rename",
-    ],
+# Extract quoted identifiers (single or double quotes)
+quote_matches = re.findall(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]", comment_body)
+patterns.extend(quote_matches)
     "style": [
         r"indent",
         r"spacing",

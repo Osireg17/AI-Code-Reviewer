@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 from src.api import webhooks
+from src.api.handlers import webhook_event_handlers
 
 
 def _signature(secret: str, body: bytes) -> str:
@@ -18,12 +19,14 @@ def test_github_webhook_enqueues_job_and_returns_id(monkeypatch, client, webhook
     captured: dict[str, object] = {}
     dummy_job = SimpleNamespace(id="job-123")
 
-    def fake_enqueue(repo_name, pr_number, action, priority=None):
+    def fake_enqueue(
+        repo_name, pr_number, action, priority=None, force_full_review=False
+    ):
         captured["args"] = (repo_name, pr_number, action)
         captured["priority"] = priority
         return dummy_job
 
-    monkeypatch.setattr(webhooks, "enqueue_review", fake_enqueue)
+    monkeypatch.setattr(webhook_event_handlers, "enqueue_review", fake_enqueue)
 
     payload = {
         "action": "opened",

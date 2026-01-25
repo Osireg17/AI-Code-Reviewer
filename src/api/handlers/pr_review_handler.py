@@ -27,6 +27,7 @@ async def handle_pr_review(
     repo_name: str,
     pr_number: int,
     action: str = "opened",
+    force_full_review: bool = False,
     session_factory: Callable[[], Session] | None = None,
     github_auth: GitHubAppAuth | None = None,
     agent: Agent[ReviewDependencies, Any] | None = None,
@@ -53,7 +54,9 @@ async def handle_pr_review(
 
         # Skip review if PR is already closed/merged
         if pr.state != "open":
-            logger.info(f"Skipping review for {review_key} - PR state is '{pr.state}'")
+            logger.info(
+                "Skipping review for %s - PR state is '%s'", review_key, pr.state
+            )
             return
 
         async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -61,7 +64,9 @@ async def handle_pr_review(
                 is_incremental,
                 base_commit_sha,
                 review_state,
-            ) = await _determine_review_type(db, repo_name, pr_number, pr, action)
+            ) = await _determine_review_type(
+                db, repo_name, pr_number, pr, action, force_full_review, repo=repo
+            )
             deps = ReviewDependencies(
                 github_client=github_client,
                 http_client=http_client,
@@ -79,7 +84,7 @@ async def handle_pr_review(
             )
             await _post_inline_comments_if_needed(pr, validated_result, deps)
             await _post_summary_review_if_needed(
-                pr, validated_result, deps, is_incremental
+                pr, validated_result, deps, is_incremental, base_commit_sha
             )
             await _update_review_state(
                 db, repo_name, pr_number, pr, is_incremental, review_key
@@ -103,7 +108,28 @@ async def _determine_review_type(
     pr_number: int,
     pr: PullRequest,
     action: str,
+    force_full_review: bool = False,
+    repo: Any = None,
 ) -> tuple[bool, str | None, ReviewState | None]:
+    """Determine whether to perform incremental or full review.
+
+    Args:
+        db: Database session
+        repo_name: Full repository name (owner/repo)
+        pr_number: Pull request number
+        pr: GitHub PullRequest object
+        action: GitHub webhook action
+        force_full_review: If True, always perform full review (user-triggered)
+        repo: GitHub Repository object (for force push detection)
+
+    Returns:
+        Tuple of (is_incremental, base_commit_sha, review_state)
+    """
+    # Force full review if explicitly requested (e.g., via re-review command)
+    if force_full_review:
+        logger.info("Force full review requested - skipping incremental logic")
+        return False, None, None
+
     is_incremental = action == "synchronize"
     base_commit_sha = None
     review_state = None
@@ -120,6 +146,15 @@ async def _determine_review_type(
 
         if review_state and review_state.initial_review_completed:
             base_commit_sha = review_state.last_reviewed_commit_sha
+
+            # Check for force push before proceeding with incremental review
+            if repo and _detect_force_push(repo, base_commit_sha, pr):
+                logger.info(
+                    f"Force push detected for PR #{pr_number} - falling back to full review"
+                )
+                await _handle_force_push(pr, base_commit_sha)
+                return False, None, review_state
+
             logger.info(
                 f"Incremental review: comparing {base_commit_sha[:7]}..{pr.head.sha[:7]}"
             )
@@ -130,6 +165,75 @@ async def _determine_review_type(
     return is_incremental, base_commit_sha, review_state
 
 
+def _detect_force_push(repo: Any, base_sha: str | None, pr: PullRequest) -> bool:
+    """Detect if a force push occurred by checking if base commit is still an ancestor.
+
+    When a developer force pushes, the old commit SHA may no longer be in the
+    PR's history, or the history has diverged. This function compares the stored
+    base commit with the current PR head to detect this scenario.
+
+    Args:
+        repo: GitHub Repository object
+        base_sha: The SHA of the last reviewed commit from our database
+        pr: GitHub PullRequest object
+
+    Returns:
+        True if force push detected (base commit not an ancestor), False otherwise
+    """
+    if not base_sha:
+        return False
+
+    try:
+        # Try to fetch the commit - will raise if it doesn't exist
+        repo.get_commit(base_sha)
+
+        # Compare base_sha with current PR head to check ancestry
+        # If base_sha is an ancestor of pr.head.sha, status should be "behind" or "identical"
+        # Any other status (diverged, ahead) indicates history was rewritten
+        comparison = repo.compare(base_sha, pr.head.sha)
+
+        # Force push detected if:
+        # - "diverged": histories have split (force push rewrote history)
+        # - "identical": same commit (no force push, but also no new changes - safe)
+        # - "behind": base_sha is ancestor of head (normal case, no force push)
+        # - "ahead": base_sha is ahead of head (treat as safe for now; commit is reachable)
+        if comparison.status == "diverged":
+            logger.warning(
+                f"Force push detected: base_sha {base_sha[:7]} is {comparison.status} "
+                f"of PR head {pr.head.sha[:7]} in PR #{pr.number}"
+            )
+            return True
+
+        return False
+    except Exception as e:
+        # Commit not found or comparison failed - likely force push
+        logger.warning(
+            f"Force push detected: cannot find commit {base_sha[:7]} in PR #{pr.number}. "
+            f"Error: {e}"
+        )
+        return True
+
+
+async def _handle_force_push(pr: PullRequest, base_sha: str) -> None:
+    """Post a warning comment when force push is detected.
+
+    Args:
+        pr: GitHub PullRequest object
+        base_sha: The SHA that was expected but is now missing
+    """
+    warning_message = (
+        "⚠️ **Force Push Detected**\n\n"
+        f"The previously reviewed commit (`{base_sha[:7]}`) is no longer in this PR's history. "
+        "This usually means a force push occurred.\n\n"
+        "I'll perform a **full review** of all changes instead of an incremental review."
+    )
+    try:
+        pr.create_issue_comment(body=warning_message)
+        logger.info("Posted force push warning for PR #%d", pr.number)
+    except Exception as e:
+        logger.warning("Failed to post force push warning: %s", e)
+
+
 async def _post_progress_comment_if_needed(pr: PullRequest, action: str) -> None:
     if action in {"opened", "reopened"}:
         bot_name = settings.bot_name
@@ -138,9 +242,9 @@ async def _post_progress_comment_if_needed(pr: PullRequest, action: str) -> None
             f"I'll post detailed feedback shortly. Thanks for your patience!"
         )
         pr.create_issue_comment(body=progress_message)
-        logger.info(f"Posted 'review in progress' comment for PR #{pr.number}")
+        logger.info("Posted 'review in progress' comment for PR #%d", pr.number)
     else:
-        logger.debug(f"Skipping progress comment for '{action}' event")
+        logger.debug("Skipping progress comment for '%s' event", action)
 
 
 async def _run_code_review_agent(
@@ -149,7 +253,7 @@ async def _run_code_review_agent(
     deps: ReviewDependencies,
     agent: Agent[ReviewDependencies, Any],
 ) -> CodeReviewResult:
-    logger.info(f"Running AI code review for PR #{pr_number}")
+    logger.info("Running AI code review for PR #%d", pr_number)
     result: Any = await with_exponential_backoff(
         agent.run,
         user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
@@ -173,7 +277,7 @@ async def _post_inline_comments_if_needed(
             "Inline comments already posted by agent; skipping webhook inline posts"
         )
         return
-    logger.info(f"Posting {len(validated_result.comments)} inline comments")
+    logger.info("Posting %d inline comments", len(validated_result.comments))
     files_cache = {file.filename: file.patch for file in pr.get_files()}
     posted_count = 0
     skipped_count = 0
@@ -199,9 +303,9 @@ async def _post_inline_comments_if_needed(
             path=comment.file_path,
             line=comment.line_number,
         )
-        logger.debug(f"Posted comment on {comment.file_path}:{comment.line_number}")
+        logger.debug("Posted comment on %s:%d", comment.file_path, comment.line_number)
         posted_count += 1
-    logger.info(f"Posted {posted_count} comments, skipped {skipped_count}")
+    logger.info("Posted %d comments, skipped %d", posted_count, skipped_count)
 
 
 async def _post_summary_review_if_needed(
@@ -209,12 +313,22 @@ async def _post_summary_review_if_needed(
     validated_result: CodeReviewResult,
     deps: ReviewDependencies,
     is_incremental: bool,
+    base_commit_sha: str | None = None,
 ) -> None:
-    if is_incremental:
+    if deps._cache.get("summary_review_posted", False):
         logger.info(
-            "Skipping summary comment for incremental review (synchronize event)"
+            "Summary review already posted by agent; skipping webhook summary post"
         )
         return
+
+    if is_incremental:
+        # Post brief incremental update instead of full summary
+        await _post_incremental_summary(
+            pr, validated_result, base_commit_sha or "unknown"
+        )
+        return
+
+    # Full review: post formal review with approval status
     summary_text = validated_result.format_summary_markdown()
     approval_status_map = {
         "APPROVE": "APPROVE",
@@ -224,13 +338,74 @@ async def _post_summary_review_if_needed(
     approval_status = approval_status_map.get(
         validated_result.summary.recommendation, "COMMENT"
     )
-    if deps._cache.get("summary_review_posted", False):
-        logger.info(
-            "Summary review already posted by agent; skipping webhook summary post"
-        )
+    pr.create_review(body=summary_text, event=approval_status)
+    logger.info("Posted summary review with status: %s", approval_status)
+
+
+async def _post_incremental_summary(
+    pr: PullRequest,
+    validated_result: CodeReviewResult,
+    base_commit_sha: str,
+) -> None:
+    """Post a brief summary comment for incremental reviews.
+
+    Instead of a formal review submission, posts an issue comment with
+    a quick summary of what was reviewed and any new issues found.
+    """
+    # Count issues by severity
+    critical_count = 0
+    warning_count = 0
+    suggestion_count = 0
+
+    for comment in validated_result.comments:
+        severity = getattr(comment, "severity", "suggestion").lower()
+        if severity in ("critical", "error", "blocker"):
+            critical_count += 1
+        elif severity in ("warning", "medium"):
+            warning_count += 1
+        else:
+            suggestion_count += 1
+
+    # Get list of reviewed files
+    reviewed_files = list({c.file_path for c in validated_result.comments})
+    files_reviewed = len(reviewed_files)
+
+    # Build summary message
+    commit_range = f"{base_commit_sha[:7]}..{pr.head.sha[:7]}"
+    summary_parts = [
+        "**Incremental Review Update**",
+        "",
+        f"Reviewed changes in commits `{commit_range}`.",
+        "",
+    ]
+
+    if validated_result.comments:
+        issue_summary = []
+        if critical_count > 0:
+            issue_summary.append(f"🔴 {critical_count} critical")
+        if warning_count > 0:
+            issue_summary.append(f"🟡 {warning_count} warning")
+        if suggestion_count > 0:
+            issue_summary.append(f"🔵 {suggestion_count} suggestion")
+
+        summary_parts.append(f"**New issues:** {', '.join(issue_summary)}")
     else:
-        pr.create_review(body=summary_text, event=approval_status)
-        logger.info(f"Posted summary review with status: {approval_status}")
+        summary_parts.append("**No new issues found** in the updated code.")
+
+    if files_reviewed > 0:
+        file_list = ", ".join(f"`{f}`" for f in reviewed_files[:5])
+        if files_reviewed > 5:
+            file_list += f" and {files_reviewed - 5} more"
+        summary_parts.append(f"**Files reviewed:** {file_list}")
+
+    summary_text = "\n".join(summary_parts)
+
+    # Post as issue comment (not formal review) to avoid cluttering review timeline
+    pr.create_issue_comment(body=summary_text)
+    logger.info(
+        f"Posted incremental review summary for PR #{pr.number}: "
+        f"{critical_count} critical, {warning_count} warning, {suggestion_count} suggestions"
+    )
 
 
 async def _update_review_state(
@@ -253,7 +428,7 @@ async def _update_review_state(
             new_commit_sha=pr.head.sha,
             mark_initial_complete=not is_incremental,
         )
-        logger.info(f"Updated ReviewState for {review_key}: {pr.head.sha[:7]}")
+        logger.info("Updated ReviewState for %s: %s", review_key, pr.head.sha[:7])
     else:
         review_state = ReviewState(
             repo_full_name=repo_name,
@@ -262,5 +437,5 @@ async def _update_review_state(
             initial_review_completed=True,
         )
         db.add(review_state)
-        logger.info(f"Created ReviewState for {review_key}: {pr.head.sha[:7]}")
+        logger.info("Created ReviewState for %s: %s", review_key, pr.head.sha[:7])
     db.commit()

@@ -73,6 +73,9 @@ tmp/
 temp/
 *.tmp
 
+# Coding Conventions
+Coding Conventions/
+
 # Private key
 obomighieai.*.private-key.pem
 

@@ -8,6 +8,7 @@ from collections.abc import Mapping
 
 from redis import Redis
 from rq import Queue, Retry
+from rq.command import send_stop_job_command
 from rq.exceptions import NoSuchJobError
 from rq.job import Job
 
@@ -82,26 +83,61 @@ def _fetch_existing_job(job_id: str) -> Job | None:
         return None
 
 
-def run_review_job(repo_name: str, pr_number: int, action: str = "opened") -> None:
-    """RQ job entrypoint that executes the async review pipeline."""
+def run_review_job(
+    repo_name: str,
+    pr_number: int,
+    action: str = "opened",
+    force_full_review: bool = False,
+) -> None:
+    """RQ job entrypoint that executes the async review pipeline.
+
+    Args:
+        repo_name: Full repository name (owner/repo)
+        pr_number: Pull request number
+        action: GitHub webhook action (opened, reopened, synchronize)
+        force_full_review: If True, skip incremental logic and do full review
+    """
     logger.info(
-        "Starting review job for %s#%s (action=%s)", repo_name, pr_number, action
+        "Starting review job for %s#%s (action=%s, force_full=%s)",
+        repo_name,
+        pr_number,
+        action,
+        force_full_review,
     )
     # Deferred import keeps queue config lightweight for non-worker processes
     from src.api.handlers.pr_review_handler import handle_pr_review
 
-    asyncio.run(handle_pr_review(repo_name, pr_number, action))
+    asyncio.run(
+        handle_pr_review(
+            repo_name, pr_number, action, force_full_review=force_full_review
+        )
+    )
     logger.info("Finished review job for %s#%s", repo_name, pr_number)
 
 
 def enqueue_review(
-    repo_name: str, pr_number: int, action: str = "opened", priority: str | None = None
+    repo_name: str,
+    pr_number: int,
+    action: str = "opened",
+    priority: str | None = None,
+    force_full_review: bool = False,
 ) -> Job:
     """Enqueue a PR review job with deduplication, priority, retries, and timeout.
 
-    - Deduplicates by repo/pr pair using a deterministic job id.
-    - Routes jobs to priority queues based on the incoming action or override.
-    - Applies a 10 minute timeout and 3 total attempts (2 retries).
+    Args:
+        repo_name: Full repository name (owner/repo)
+        pr_number: Pull request number
+        action: GitHub webhook action (opened, reopened, synchronize)
+        priority: Optional queue priority override (high, default, low)
+        force_full_review: If True, skip incremental logic and do full review
+
+    Returns:
+        The enqueued or existing Job instance
+
+    Notes:
+        - Deduplicates by repo/pr pair using a deterministic job id
+        - Routes jobs to priority queues based on action or override
+        - Applies configured timeout and retry strategy
     """
     job_id = _job_id(repo_name, pr_number)
     queue = _get_queue(action, priority)
@@ -110,22 +146,54 @@ def enqueue_review(
     existing_job = _fetch_existing_job(job_id)
     if existing_job:
         status = existing_job.get_status(refresh=True)
-        if status in {"queued", "started", "deferred"}:
-            logger.info(
-                "Skipping duplicate review job for %s#%s (status=%s)",
-                repo_name,
-                pr_number,
-                status,
-            )
-            return existing_job
+        if force_full_review:
+            if status in {"queued", "deferred"}:
+                logger.info(
+                    "Canceling queued review job for %s#%s (status=%s) to force full review",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+                existing_job.cancel()
+            elif status == "started":
+                logger.info(
+                    "Stopping running review job for %s#%s to force full review",
+                    repo_name,
+                    pr_number,
+                )
+                try:
+                    send_stop_job_command(redis_connection, job_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to stop running job for %s#%s; enqueueing full review anyway",
+                        repo_name,
+                        pr_number,
+                    )
+            else:
+                logger.info(
+                    "Existing review job for %s#%s is %s; enqueueing full review",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+        else:
+            if status in {"queued", "started", "deferred"}:
+                logger.info(
+                    "Skipping duplicate review job for %s#%s (status=%s)",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+                return existing_job
 
     logger.info(
-        "Enqueuing review job for %s#%s on queue '%s' (action=%s, priority=%s)",
+        "Enqueuing review job for %s#%s on queue '%s' (action=%s, priority=%s, force_full=%s)",
         repo_name,
         pr_number,
         queue.name,
         action,
         priority or "mapped",
+        force_full_review,
     )
     logger.debug(
         "Enqueue options: timeout=%s, retry=%s, job_id=%s",
@@ -138,6 +206,7 @@ def enqueue_review(
         repo_name,
         pr_number,
         action,
+        force_full_review,
         job_id=job_id,
         retry=RETRY_STRATEGY,
         job_timeout=JOB_TIMEOUT_SECONDS,

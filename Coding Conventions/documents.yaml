@@ -365,6 +365,42 @@
   document_type: reference
   url: https://www.computer.org/education/bodies-of-knowledge/software-engineering
 
+# Design Patterns Documents (Cross-Language)
+- file_path: Design-Patterns/Designing-Interfaces-2nd.pdf
+  language: cross-language
+  namespace: design-patterns
+  source: designing-interfaces-2nd
+  document_type: reference
+  url: null
+
+- file_path: Design-Patterns/Head-First-Design-Patterns.pdf
+  language: cross-language
+  namespace: design-patterns
+  source: head-first-design-patterns
+  document_type: reference
+  url: null
+
+- file_path: Design-Patterns/Head-First-Object-Oriented-Design-and-Analysis.pdf
+  language: cross-language
+  namespace: design-patterns
+  source: head-first-oo-design-analysis
+  document_type: reference
+  url: null
+
+- file_path: Design-Patterns/Software-Architecture-Patterns.pdf
+  language: cross-language
+  namespace: design-patterns
+  source: software-architecture-patterns
+  document_type: reference
+  url: null
+
+- file_path: Design-Patterns/The-Object-Oriented-Thought-Process-3rd-Edition.pdf
+  language: cross-language
+  namespace: design-patterns
+  source: object-oriented-thought-process-3rd
+  document_type: reference
+  url: null
+
 # Unit Testing Documents (Cross-Language Best Practices)
 - file_path: Unit-testing/Unit_Testing_Principles_Practices_and_Patterns.pdf
   language: cross-language
@@ -384,6 +420,13 @@
   language: cross-language
   namespace: unit-testing
   source: art-of-software-testing
+  document_type: best_practices
+  url: null
+
+- file_path: Unit-testing/Growing Object Oriented Software Guided by Tests.pdf
+  language: cross-language
+  namespace: unit-testing
+  source: growing-oo-software-guided-by-tests
   document_type: best_practices
   url: null
 

@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -130,6 +130,12 @@ class Settings(BaseSettings):
         description="PostgreSQL database URL (required). Use private URL (postgres.railway.internal) in Railway, public URL for local dev",
     )
 
+    # Re-review Trigger Configuration
+    review_trigger_phrases: list[str] | None = Field(
+        default=None,
+        description="Phrases that trigger a full re-review when posted as PR comments",
+    )
+
     # RAG Configuration
     rag_enabled: bool = Field(default=True, description="Enable RAG style guide search")
     embedding_model: str = Field(
@@ -163,6 +169,22 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development environment."""
         return self.environment == "development"
+
+    @model_validator(mode="after")
+    def _apply_default_review_triggers(self) -> "Settings":
+        """Populate review trigger phrases if none are configured."""
+        if self.review_trigger_phrases:
+            return self
+
+        bot_login = (self.github_app_bot_login or "ai-code-reviewer").strip()
+        bot_login = bot_login.lstrip("@").removesuffix("[bot]")
+        bot_handle = f"@{bot_login}"
+        self.review_trigger_phrases = [
+            f"{bot_handle} please review again",
+            f"{bot_handle} re-review",
+            "/ai-review",
+        ]
+        return self
 
 
 # Global settings instance

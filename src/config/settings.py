@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -131,12 +131,8 @@ class Settings(BaseSettings):
     )
 
     # Re-review Trigger Configuration
-    review_trigger_phrases: list[str] = Field(
-        default=[
-            "@ai-code-reviewer please review again",
-            "@ai-code-reviewer re-review",
-            "/ai-review",
-        ],
+    review_trigger_phrases: list[str] | None = Field(
+        default=None,
         description="Phrases that trigger a full re-review when posted as PR comments",
     )
 
@@ -173,6 +169,22 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development environment."""
         return self.environment == "development"
+
+    @model_validator(mode="after")
+    def _apply_default_review_triggers(self) -> "Settings":
+        """Populate review trigger phrases if none are configured."""
+        if self.review_trigger_phrases:
+            return self
+
+        bot_login = (self.github_app_bot_login or "ai-code-reviewer").strip()
+        bot_login = bot_login.lstrip("@").removesuffix("[bot]")
+        bot_handle = f"@{bot_login}"
+        self.review_trigger_phrases = [
+            f"{bot_handle} please review again",
+            f"{bot_handle} re-review",
+            "/ai-review",
+        ]
+        return self
 
 
 # Global settings instance

@@ -38,14 +38,18 @@ def handle_pull_request_event(payload: dict[str, Any]) -> dict[str, str | int]:
     pr_state = pr_data.get("state")
 
     logger.info(
-        f"Received PR {action} event for PR #{pr_number} in {repo_name} (state: {pr_state})"
+        "Received PR %s event for PR #%d in %s (state: %s)",
+        action,
+        pr_number,
+        repo_name,
+        pr_state,
     )
 
     if action == "closed":
         return {"message": f"PR #{pr_number} closed, cleaned up", "status": "closed"}
 
     if pr_state != "open":
-        logger.info(f"Skipping review for PR #{pr_number} - PR is {pr_state}")
+        logger.info("Skipping review for PR #%d - PR is %s", pr_number, pr_state)
         return {
             "message": f"PR #{pr_number} is {pr_state}, skipping review",
             "status": "skipped",
@@ -54,7 +58,7 @@ def handle_pull_request_event(payload: dict[str, Any]) -> dict[str, str | int]:
     if action in ["opened", "reopened", "synchronize"]:
         return _enqueue_pr_review(payload, pr_number, repo_name, action)
 
-    logger.info(f"Ignoring PR {action} event")
+    logger.info("Ignoring PR %s event", action)
     return {"message": f"Event {action} ignored"}
 
 
@@ -97,7 +101,7 @@ def _enqueue_pr_review(
             detail=f"Failed to enqueue review job: {exc}",
         ) from exc
 
-    logger.info(f"Queued background review for PR #{pr_number} (action: {action})")
+    logger.info("Queued background review for PR #%d (action: %s)", pr_number, action)
     return {
         "message": f"PR #{pr_number} review queued",
         "status": "accepted",
@@ -177,7 +181,11 @@ def _check_re_review_trigger(
 ) -> dict[str, str | int]:
     """Check if comment contains a re-review trigger and queue if so."""
     comment_body = comment.get("body", "").lower().strip()
-    trigger_phrases = [phrase.lower() for phrase in settings.review_trigger_phrases]
+    trigger_phrases = (
+        [phrase.lower() for phrase in settings.review_trigger_phrases]
+        if settings.review_trigger_phrases
+        else []
+    )
 
     if all(phrase not in comment_body for phrase in trigger_phrases):
         logger.debug(f"Comment does not contain trigger phrase: {comment_body[:50]}")

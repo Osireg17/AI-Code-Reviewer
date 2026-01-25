@@ -8,6 +8,7 @@ from collections.abc import Mapping
 
 from redis import Redis
 from rq import Queue, Retry
+from rq.command import send_stop_job_command
 from rq.exceptions import NoSuchJobError
 from rq.job import Job
 
@@ -145,14 +146,45 @@ def enqueue_review(
     existing_job = _fetch_existing_job(job_id)
     if existing_job:
         status = existing_job.get_status(refresh=True)
-        if status in {"queued", "started", "deferred"}:
-            logger.info(
-                "Skipping duplicate review job for %s#%s (status=%s)",
-                repo_name,
-                pr_number,
-                status,
-            )
-            return existing_job
+        if force_full_review:
+            if status in {"queued", "deferred"}:
+                logger.info(
+                    "Canceling queued review job for %s#%s (status=%s) to force full review",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+                existing_job.cancel()
+            elif status == "started":
+                logger.info(
+                    "Stopping running review job for %s#%s to force full review",
+                    repo_name,
+                    pr_number,
+                )
+                try:
+                    send_stop_job_command(redis_connection, job_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to stop running job for %s#%s; enqueueing full review anyway",
+                        repo_name,
+                        pr_number,
+                    )
+            else:
+                logger.info(
+                    "Existing review job for %s#%s is %s; enqueueing full review",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+        else:
+            if status in {"queued", "started", "deferred"}:
+                logger.info(
+                    "Skipping duplicate review job for %s#%s (status=%s)",
+                    repo_name,
+                    pr_number,
+                    status,
+                )
+                return existing_job
 
     logger.info(
         "Enqueuing review job for %s#%s on queue '%s' (action=%s, priority=%s, force_full=%s)",

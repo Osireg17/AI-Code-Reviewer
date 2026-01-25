@@ -78,9 +78,7 @@ ISSUE_PATTERNS: dict[str, list[str]] = {
         r"function name",
         r"should be named",
         r"rename",
-# Extract quoted identifiers (single or double quotes)
-quote_matches = re.findall(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]", comment_body)
-patterns.extend(quote_matches)
+    ],
     "style": [
         r"indent",
         r"spacing",
@@ -103,7 +101,7 @@ patterns.extend(quote_matches)
         r"credential",
     ],
     "performance": [
-        r"O\(n",
+        r"\bO\([^)]+\)",  # Big-O notation: O(n), O(n^2), O(log n), etc.
         r"complexity",
         r"loop",
         r"cache",
@@ -224,12 +222,7 @@ def find_resolved_issues(
     resolved = []
 
     for comment_data in previous_comments:
-        try:
-            fingerprint = CommentFingerprint.from_dict(comment_data)
-        except Exception as e:
-            logger.warning(f"Failed to parse comment fingerprint: {e}")
-            continue
-
+        fingerprint = CommentFingerprint.from_dict(comment_data)
         file_path = fingerprint.file_path
 
         # Check if the file was changed
@@ -254,7 +247,7 @@ def find_resolved_issues(
             )
         )
 
-    logger.info(f"Found {len(resolved)} potentially resolved issues")
+    logger.info("Found %d potentially resolved issues", len(resolved))
     return resolved
 
 
@@ -307,8 +300,9 @@ async def post_resolution_acknowledgment(
         comment_id = resolved.fingerprint.comment_id
         if not comment_id:
             logger.debug(
-                f"Skipping resolution acknowledgment - no comment_id for "
-                f"{resolved.fingerprint.file_path}:{resolved.fingerprint.line_number}"
+                "Skipping resolution acknowledgment - no comment_id for %s:%d",
+                resolved.fingerprint.file_path,
+                resolved.fingerprint.line_number,
             )
             continue
 
@@ -317,22 +311,29 @@ async def post_resolution_acknowledgment(
             f"The {resolved.fingerprint.issue_type} issue appears to be resolved."
         )
 
-        try:
-            # Use GitHub API to reply to the original thread
-            # PyGithub supports this via create_review_comment with in_reply_to
-            pr.create_review_comment(
-                body=acknowledgment_text,
-                commit=pr.head.sha,
-                path=resolved.fingerprint.file_path,
-                in_reply_to=comment_id,
-            )
-            posted_count += 1
-            logger.info(
-                f"Posted resolution acknowledgment for comment {comment_id} "
-                f"on {resolved.fingerprint.file_path}"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to post resolution acknowledgment: {e}")
+        # Prefer explicit reply when available to avoid passing commit/path/position.
+        reply_target = pr.get_review_comment(comment_id)
+        if hasattr(reply_target, "reply"):
+            reply_target.reply(acknowledgment_text)
+        else:
+            try:
+                pr.create_review_comment(
+                    body=acknowledgment_text,
+                    in_reply_to=comment_id,
+                )
+            except TypeError:
+                pr.create_review_comment(
+                    body=acknowledgment_text,
+                    commit=pr.head.sha,
+                    path=resolved.fingerprint.file_path,
+                    in_reply_to=comment_id,
+                )
+        posted_count += 1
+        logger.info(
+            "Posted resolution acknowledgment for comment %d on %s",
+            comment_id,
+            resolved.fingerprint.file_path,
+        )
 
     return posted_count
 
@@ -351,15 +352,12 @@ def build_comments_for_storage(
     fingerprints = []
 
     for comment in comments:
-        try:
-            fingerprint = generate_issue_fingerprint(
-                file_path=comment.get("file_path", ""),
-                line_number=comment.get("line_number", 0),
-                comment_body=comment.get("comment_body", comment.get("body", "")),
-                comment_id=comment.get("comment_id"),
-            )
-            fingerprints.append(fingerprint.to_dict())
-        except Exception as e:
-            logger.warning(f"Failed to generate fingerprint for comment: {e}")
+        fingerprint = generate_issue_fingerprint(
+            file_path=comment.get("file_path", ""),
+            line_number=comment.get("line_number", 0),
+            comment_body=comment.get("comment_body", comment.get("body", "")),
+            comment_id=comment.get("comment_id"),
+        )
+        fingerprints.append(fingerprint.to_dict())
 
     return fingerprints

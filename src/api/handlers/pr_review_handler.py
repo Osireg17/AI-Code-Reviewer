@@ -54,7 +54,9 @@ async def handle_pr_review(
 
         # Skip review if PR is already closed/merged
         if pr.state != "open":
-            logger.info(f"Skipping review for {review_key} - PR state is '{pr.state}'")
+            logger.info(
+                "Skipping review for %s - PR state is '%s'", review_key, pr.state
+            )
             return
 
         async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -164,11 +166,11 @@ async def _determine_review_type(
 
 
 def _detect_force_push(repo: Any, base_sha: str | None, pr: PullRequest) -> bool:
-    """Detect if a force push occurred by checking if base commit still exists.
+    """Detect if a force push occurred by checking if base commit is still an ancestor.
 
-    When a developer force pushes, the old commit SHA no longer exists in the
-    repository history. This function attempts to fetch the stored base commit
-    to detect this scenario.
+    When a developer force pushes, the old commit SHA may no longer be in the
+    PR's history, or the history has diverged. This function compares the stored
+    base commit with the current PR head to detect this scenario.
 
     Args:
         repo: GitHub Repository object
@@ -176,7 +178,7 @@ def _detect_force_push(repo: Any, base_sha: str | None, pr: PullRequest) -> bool
         pr: GitHub PullRequest object
 
     Returns:
-        True if force push detected (base commit missing), False otherwise
+        True if force push detected (base commit not an ancestor), False otherwise
     """
     if not base_sha:
         return False
@@ -185,15 +187,22 @@ def _detect_force_push(repo: Any, base_sha: str | None, pr: PullRequest) -> bool
         # Try to fetch the commit - will raise if it doesn't exist
         repo.get_commit(base_sha)
 
-        # Additional check: verify commit is in PR's history
-        # Compare base_sha with PR's base to ensure it's still reachable
-        comparison = repo.compare(pr.base.sha, base_sha)
+        # Compare base_sha with current PR head to check ancestry
+        # If base_sha is an ancestor of pr.head.sha, status should be "behind" or "identical"
+        # Any other status (diverged, ahead) indicates history was rewritten
+        comparison = repo.compare(base_sha, pr.head.sha)
 
-        # If we can't reach base_sha from PR base, it's been force-pushed away
-        if comparison.status == "diverged" or comparison.ahead_by == 0:
-            # "diverged" means histories split; check if base_sha is reachable
-            # This is a heuristic - if we get here without error, commit exists
-            pass
+        # Force push detected if:
+        # - "diverged": histories have split (force push rewrote history)
+        # - "identical": same commit (no force push, but also no new changes - safe)
+        # - "behind": base_sha is ancestor of head (normal case, no force push)
+        # - "ahead": base_sha is ahead of head (treat as safe for now; commit is reachable)
+        if comparison.status == "diverged":
+            logger.warning(
+                f"Force push detected: base_sha {base_sha[:7]} is {comparison.status} "
+                f"of PR head {pr.head.sha[:7]} in PR #{pr.number}"
+            )
+            return True
 
         return False
     except Exception as e:
@@ -220,9 +229,9 @@ async def _handle_force_push(pr: PullRequest, base_sha: str) -> None:
     )
     try:
         pr.create_issue_comment(body=warning_message)
-        logger.info(f"Posted force push warning for PR #{pr.number}")
+        logger.info("Posted force push warning for PR #%d", pr.number)
     except Exception as e:
-        logger.warning(f"Failed to post force push warning: {e}")
+        logger.warning("Failed to post force push warning: %s", e)
 
 
 async def _post_progress_comment_if_needed(pr: PullRequest, action: str) -> None:
@@ -233,9 +242,9 @@ async def _post_progress_comment_if_needed(pr: PullRequest, action: str) -> None
             f"I'll post detailed feedback shortly. Thanks for your patience!"
         )
         pr.create_issue_comment(body=progress_message)
-        logger.info(f"Posted 'review in progress' comment for PR #{pr.number}")
+        logger.info("Posted 'review in progress' comment for PR #%d", pr.number)
     else:
-        logger.debug(f"Skipping progress comment for '{action}' event")
+        logger.debug("Skipping progress comment for '%s' event", action)
 
 
 async def _run_code_review_agent(
@@ -244,7 +253,7 @@ async def _run_code_review_agent(
     deps: ReviewDependencies,
     agent: Agent[ReviewDependencies, Any],
 ) -> CodeReviewResult:
-    logger.info(f"Running AI code review for PR #{pr_number}")
+    logger.info("Running AI code review for PR #%d", pr_number)
     result: Any = await with_exponential_backoff(
         agent.run,
         user_prompt=f"Please review pull request #{pr_number} in {repo_name}. "
@@ -268,7 +277,7 @@ async def _post_inline_comments_if_needed(
             "Inline comments already posted by agent; skipping webhook inline posts"
         )
         return
-    logger.info(f"Posting {len(validated_result.comments)} inline comments")
+    logger.info("Posting %d inline comments", len(validated_result.comments))
     files_cache = {file.filename: file.patch for file in pr.get_files()}
     posted_count = 0
     skipped_count = 0
@@ -294,9 +303,9 @@ async def _post_inline_comments_if_needed(
             path=comment.file_path,
             line=comment.line_number,
         )
-        logger.debug(f"Posted comment on {comment.file_path}:{comment.line_number}")
+        logger.debug("Posted comment on %s:%d", comment.file_path, comment.line_number)
         posted_count += 1
-    logger.info(f"Posted {posted_count} comments, skipped {skipped_count}")
+    logger.info("Posted %d comments, skipped %d", posted_count, skipped_count)
 
 
 async def _post_summary_review_if_needed(
@@ -330,7 +339,7 @@ async def _post_summary_review_if_needed(
         validated_result.summary.recommendation, "COMMENT"
     )
     pr.create_review(body=summary_text, event=approval_status)
-    logger.info(f"Posted summary review with status: {approval_status}")
+    logger.info("Posted summary review with status: %s", approval_status)
 
 
 async def _post_incremental_summary(
@@ -419,7 +428,7 @@ async def _update_review_state(
             new_commit_sha=pr.head.sha,
             mark_initial_complete=not is_incremental,
         )
-        logger.info(f"Updated ReviewState for {review_key}: {pr.head.sha[:7]}")
+        logger.info("Updated ReviewState for %s: %s", review_key, pr.head.sha[:7])
     else:
         review_state = ReviewState(
             repo_full_name=repo_name,
@@ -428,5 +437,5 @@ async def _update_review_state(
             initial_review_completed=True,
         )
         db.add(review_state)
-        logger.info(f"Created ReviewState for {review_key}: {pr.head.sha[:7]}")
+        logger.info("Created ReviewState for %s: %s", review_key, pr.head.sha[:7])
     db.commit()

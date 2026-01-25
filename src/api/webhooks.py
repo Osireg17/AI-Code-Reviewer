@@ -136,5 +136,5 @@ async def github_webhook(
         case "issue_comment":
             return handle_issue_comment_event(payload)
         case _:
-            logger.info(f"Ignoring event type: {x_github_event}")
+            logger.info("Ignoring event type: %s", x_github_event)
             return {"message": f"Event {x_github_event} not supported"}

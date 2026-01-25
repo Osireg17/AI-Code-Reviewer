@@ -517,11 +517,13 @@ class TestPostSummaryReview(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Good work!", call_kwargs["body"])
         self.assertEqual(call_kwargs["event"], "APPROVE")
 
-    async def test_skips_summary_for_incremental_review(self):
-        """Test summary is skipped for synchronize events."""
+    async def test_posts_incremental_summary_for_synchronize(self):
+        """Test incremental summary is posted for synchronize events."""
         # Setup
         mock_pr = MagicMock()
+        mock_pr.head.sha = "new_sha_789"
         mock_deps = MagicMock()
+        mock_deps._cache = {}
 
         validated_result = CodeReviewResult(
             summary=ReviewSummary(
@@ -536,10 +538,17 @@ class TestPostSummaryReview(unittest.IsolatedAsyncioTestCase):
             validated_result=validated_result,
             deps=mock_deps,
             is_incremental=True,
+            base_commit_sha="old_sha_456",
         )
 
-        # Assert
+        # Assert - should post issue comment (incremental summary) instead of review
         mock_pr.create_review.assert_not_called()
+        mock_pr.create_issue_comment.assert_called_once()
+        call_args = mock_pr.create_issue_comment.call_args
+        body = call_args.kwargs["body"]
+        self.assertIn("Incremental Review Update", body)
+        self.assertIn("old_sha", body)  # base commit
+        self.assertIn("new_sha", body)  # head commit
 
     async def test_uses_approve_status(self):
         """Test APPROVE status mapping."""

@@ -95,7 +95,10 @@ def test_pr_opened_event(
 
     # Mock the background review process to avoid real GitHub API calls
     dummy_job = type("Job", (), {"id": "job-xyz"})()
-    with patch("src.api.webhooks.enqueue_review", return_value=dummy_job):
+    with patch(
+        "src.api.handlers.webhook_event_handlers.enqueue_review",
+        return_value=dummy_job,
+    ):
         response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 
     assert response.status_code == 200

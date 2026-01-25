@@ -1,8 +1,9 @@
 """SQLAlchemy model for tracking PR review state."""
 
 from datetime import datetime, timezone
+from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.conversation import Base
@@ -42,6 +43,15 @@ class ReviewState(Base):
         comment="Whether the initial full PR review has been completed",
     )
 
+    # Comment tracking for incremental reviews
+    # Using JSON instead of JSONB for cross-database compatibility (SQLite + PostgreSQL)
+    previous_comments: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON,
+        nullable=True,
+        default=None,
+        comment="JSON list of previous review comments with metadata for delta tracking",
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -68,7 +78,10 @@ class ReviewState(Base):
         )
 
     def update_review_state(
-        self, new_commit_sha: str, mark_initial_complete: bool = False
+        self,
+        new_commit_sha: str,
+        mark_initial_complete: bool = False,
+        comments: list[dict[str, Any]] | None = None,
     ) -> None:
         """
         Update the review state after reviewing new commits.
@@ -76,8 +89,11 @@ class ReviewState(Base):
         Args:
             new_commit_sha: The latest commit SHA that was just reviewed
             mark_initial_complete: Whether to mark initial review as completed
+            comments: Optional list of comment metadata to store for delta tracking
         """
         self.last_reviewed_commit_sha = new_commit_sha
         if mark_initial_complete:
             self.initial_review_completed = True
+        if comments is not None:
+            self.previous_comments = comments
         self.updated_at = datetime.now(timezone.utc)

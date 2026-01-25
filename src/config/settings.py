@@ -130,6 +130,16 @@ class Settings(BaseSettings):
         description="PostgreSQL database URL (required). Use private URL (postgres.railway.internal) in Railway, public URL for local dev",
     )
 
+    # Re-review Trigger Configuration
+    review_trigger_phrases: list[str] = Field(
+        default=[
+            "@ai-code-reviewer please review again",
+            "@ai-code-reviewer re-review",
+            "/ai-review",
+        ],
+        description="Phrases that trigger a full re-review when posted as PR comments",
+    )
+
     # RAG Configuration
     rag_enabled: bool = Field(default=True, description="Enable RAG style guide search")
     embedding_model: str = Field(

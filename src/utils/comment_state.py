@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 STATE_START_MARKER = "<!-- AI-REVIEWER-STATE"
 STATE_END_MARKER = "-->"
 
-# Regex pattern to extract state from comment body
+STATE_PATTERN = re.compile(
+    r"<!--\s*AI-REVIEWER-STATE\s*\r?\n(.*?)\r?\n\s*-->",
+    re.DOTALL | re.IGNORECASE,
+)
 STATE_PATTERN = re.compile(
     r"<!--\s*AI-REVIEWER-STATE\s*\n(.*?)\n\s*-->",
     re.DOTALL | re.IGNORECASE,

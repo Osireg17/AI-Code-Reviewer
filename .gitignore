@@ -82,3 +82,4 @@ obomighieai.*.private-key.pem
 # Claude.md files
 CLAUDE.md
 CLAUDE.local.md
+/doc/

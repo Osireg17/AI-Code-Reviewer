@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
+from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.services.rag_service import rag_service
 
@@ -60,6 +61,8 @@ async def search_style_guides(
             "success": True,
             "message": f"No relevant style guides found for '{query}'",
             "results": [],
+            "max_similarity": 0.0,
+            "confidence": "low",
         }
 
     # Format results for agent consumption
@@ -80,10 +83,22 @@ async def search_style_guides(
         f"Found {len(formatted_results)} style guide results for query='{query}', language={language}"
     )
 
+    # Compute max_similarity and confidence level
+    max_similarity = max((r["similarity"] for r in formatted_results), default=0.0)
+
+    if max_similarity >= settings.rag_confidence_threshold:
+        confidence = "high"
+    elif max_similarity >= settings.rag_min_similarity:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
     return {
         "success": True,
         "query": query,
         "language": language,
         "results_count": len(formatted_results),
         "results": formatted_results,
+        "max_similarity": max_similarity,
+        "confidence": confidence,
     }

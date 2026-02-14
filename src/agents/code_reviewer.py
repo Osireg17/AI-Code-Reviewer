@@ -11,7 +11,7 @@ from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.prompts.code_reviewer_prompt import SYSTEM_PROMPT
-from src.tools import conversation_tools, github_tools, rag_tools
+from src.tools import conversation_tools, github_search_tools, github_tools, rag_tools
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,28 @@ async def search_style_guides(
         search_style_guides(query="naming conventions for constants", language="java")
     """
     return await rag_tools.search_style_guides(ctx, query, language, top_k)
+
+
+@code_review_agent.tool
+async def search_codebase(
+    ctx: RunContext[ReviewDependencies],
+    query: str,
+    language_filter: str | None = None,
+) -> dict:
+    """Search the repository for existing code patterns.
+
+    Use this to check naming conventions, error handling patterns,
+    and similar implementations before making review suggestions.
+    Results are cached per query+language combination.
+
+    Args:
+        query: What to search for (e.g., "error handling pattern", "naming convention")
+        language_filter: Optional language filter (e.g., "python", "javascript")
+
+    Returns:
+        Dict with success, query, results_count, and results list
+    """
+    return await github_search_tools.search_codebase(ctx, query, language_filter)
 
 
 @code_review_agent.tool

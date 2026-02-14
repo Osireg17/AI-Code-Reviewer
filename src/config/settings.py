@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     review_temperature: float = Field(
         default=0.5, description="Temperature for AI model responses"
     )
+    github_search_max_results: int = Field(
+        default=5, description="Max results from GitHub code search per query"
+    )
 
     # Server Configuration
     # Use a localhost default to avoid binding to all interfaces.
@@ -147,6 +150,10 @@ class Settings(BaseSettings):
     )
     rag_min_similarity: float = Field(
         default=0.4, description="Minimum similarity score for RAG results (0-1)"
+    )
+    rag_confidence_threshold: float = Field(
+        default=0.6,
+        description="Similarity threshold above which RAG results are considered high confidence",
     )
 
     # Worker Configuration

@@ -64,21 +64,43 @@ IMPORTANT:
         * Specific: "SQL injection prevention" (if file has database queries)
       - Use RAG results to INFORM your review - cite sources in comments
       - If you spot specific patterns during review, make additional targeted RAG calls
+      - NOTE: The return value includes a `confidence` field ("high", "medium", "low")
 
-   d. Optional Context:
+   d. Web Search Fallback (when RAG confidence is low/medium)
+      - If search_style_guides returns confidence "low" or "medium":
+        - Use web search to find authoritative documentation for the technology
+        - Prefer official documentation (e.g., docs.python.org, developer.mozilla.org)
+        - Focus on the specific pattern or convention you need guidance on
+      - If confidence is "high", skip web search — RAG is sufficient
+      - Web search is supplementary. RAG is always the first source of truth.
+
+   e. Codebase Pattern Search (ALWAYS, 1 search per file)
+      - Call search_codebase(query) after getting the diff
+      - Use it to check if the repo already has established patterns for:
+        * Naming conventions
+        * Error handling
+        * Similar functions or implementations
+      - If the repo already uses a pattern (even if non-standard), prefer consistency
+        over textbook conventions. Note the deviation but don't block on it.
+      - Example queries:
+        * "error handling pattern" (if file has try/catch)
+        * "variable naming convention" (if file defines variables)
+        * "similar function to process_data" (if reviewing a new function)
+
+   f. Optional Context:
       - Call get_full_file(file_path, ref="head") ONLY if:
         - Logic spans beyond the diff
         - Design intent is unclear
         - You need to reason about tests or call sites
 
-   e. Perform Light Pass (INFORMED BY RAG)
+   g. Perform Light Pass (INFORMED BY RAG + web search + codebase patterns)
       - Naming clarity (backed by style guide conventions)
       - Obvious bugs
       - Commented-out or dead code
       - Missing or trivial tests
       - Style guide violations not caught by linters
 
-   f. Perform Contextual Pass (INFORMED BY RAG)
+   h. Perform Contextual Pass (INFORMED BY RAG + web search + codebase patterns)
       Evaluate:
       - Does this change do what the author intends?
       - Is the intent good for users and future developers?
@@ -88,8 +110,10 @@ IMPORTANT:
       - Can a new team member understand this code?
       - Does this increase long-term system complexity?
       - Security patterns and anti-patterns (use RAG for OWASP references)
+      - Does this match existing patterns in the repository? (use search_codebase results)
+      - If it deviates from repo conventions, is the deviation an improvement?
 
-   g. Inline Comments
+   i. Inline Comments
       - Use post_review_comment(file_path, line_number, comment_body)
       - Line number MUST be from valid_comment_lines
       - If invalid, reference nearest valid line

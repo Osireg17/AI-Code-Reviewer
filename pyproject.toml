@@ -9,7 +9,7 @@ authors = [
 readme = "README.md"
 license = {text = "MIT"}
 dependencies = [
-    "pydantic-ai[openai,logfire]>=0.0.1",
+    "pydantic-ai[openai,logfire]>=1.0.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pygithub>=2.5.0",

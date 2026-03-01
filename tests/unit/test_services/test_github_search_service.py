@@ -67,7 +67,7 @@ async def test_search_code_success(mock_get_auth, mock_rate_limiter):
     # Verify the HTTP call was made with correct params
     client.get.assert_called_once()
     call_kwargs = client.get.call_args
-    assert call_kwargs[1]["params"]["q"] == "snake_case repo:owner/repo"
+    assert call_kwargs[1]["params"]["q"] == "snake_case repo:owner/repo in:file"
 
 
 @pytest.mark.asyncio

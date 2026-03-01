@@ -193,8 +193,12 @@ async def search_codebase(
     and similar implementations before making review suggestions.
     Results are cached per query+language combination.
 
+    IMPORTANT: This uses GitHub keyword search, not semantic search.
+    Use short, literal terms that appear verbatim in source code (e.g., "handleError",
+    "try catch", "snake_case"). Long descriptive phrases return 0 results.
+
     Args:
-        query: What to search for (e.g., "error handling pattern", "naming convention")
+        query: Short literal keyword(s) to find in source code (max ~30 chars)
         language_filter: Optional language filter (e.g., "python", "javascript")
 
     Returns:

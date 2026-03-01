@@ -57,10 +57,13 @@ async def search_code(
     # Acquire rate limiter token (will wait if rate-limited)
     await github_search_rate_limiter.acquire()
 
-    # Build search query
-    search_query = f"{query} repo:{repo_full_name}"
+    # Build search query — truncate to stay within GitHub's 256 char limit
+    # Strip any existing qualifiers from query to avoid duplication
+    clean_query = query.strip()
+    search_query = f"{clean_query} repo:{repo_full_name} in:file"
     if language_filter:
         search_query += f" language:{language_filter}"
+    search_query = search_query[:256]
 
     # Get installation token via the auth service (same source as the Github client)
     github_auth = get_github_app_auth()
@@ -152,10 +155,13 @@ def _parse_search_results(
                 if fragment and fragment not in matched_lines:
                     matched_lines.append(fragment)
 
+        # Include result even if no text_matches — file path alone is useful
+        # for the agent to know the pattern exists in the codebase
         results.append(
             {
                 "file_path": file_path,
                 "matched_lines": matched_lines,
+                "has_snippets": len(matched_lines) > 0,
                 "url": html_url,
             }
         )

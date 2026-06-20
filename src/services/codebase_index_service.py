@@ -395,5 +395,80 @@ class CodebaseIndexService:
             batch = vectors[i : i + _PINECONE_UPSERT_BATCH_SIZE]
             self.index.upsert(vectors=batch, namespace=namespace)
 
+    async def search_codebase(
+        self,
+        query: str,
+        namespace: str,
+        mode: str = "semantic",
+        language: str | None = None,
+        top_k: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Search the codebase semantic index for matching code patterns.
+
+        Args:
+            query: Search query string or function name
+            namespace: Repo namespace (e.g. "owner__repo")
+            mode: Search mode ("semantic" or "exact_call")
+            language: Optional language filter
+            top_k: Number of results to return
+
+        Returns:
+            List of matching functions with metadata and scores
+        """
+        if not self.is_available():
+            logger.warning("Codebase index service is not available")
+            return []
+
+        assert self.index is not None
+
+        filter_dict: dict[str, Any] = {}
+        if language:
+            filter_dict["language"] = language.lower()
+
+        if mode == "semantic":
+            assert self.embeddings is not None
+            # Embed the query string
+            query_vector = await self.embeddings.aembed_query(query)
+
+            response = self.index.query(
+                vector=query_vector,
+                filter=filter_dict or None,
+                top_k=top_k,
+                namespace=namespace,
+                include_metadata=True,
+            )
+        elif mode == "exact_call":
+            filter_dict["calls"] = {"$in": [query]}
+
+            response = self.index.query(
+                vector=[0.0] * 1536,
+                filter=filter_dict,
+                top_k=top_k,
+                namespace=namespace,
+                include_metadata=True,
+            )
+        else:
+            raise ValueError(f"Invalid mode '{mode}'")
+
+        results_list = []
+        for match in response.matches:
+            metadata = match.metadata or {}
+            text = metadata.get("text", "")
+            signature = text.split("\ncalls:")[0] if "\ncalls:" in text else text
+
+            results_list.append(
+                {
+                    "function_name": metadata.get("function_name", "Unknown"),
+                    "file_path": metadata.get("file_path", "Unknown"),
+                    "signature": signature,
+                    "calls": metadata.get("calls", []),
+                    "score": (
+                        round(match.score or 0.0, 3) if match.score is not None else 0.0
+                    ),
+                }
+            )
+
+        return results_list
+
 
 codebase_index_service = CodebaseIndexService()

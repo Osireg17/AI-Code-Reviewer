@@ -22,3 +22,55 @@ def test_redis_settings_env_overrides(monkeypatch) -> None:
     assert settings.redis_host == "redis.internal"  # pragma: allowlist secret
     assert settings.redis_port == 6380  # pragma: allowlist secret
     assert settings.redis_password == "super-secret"  # pragma: allowlist secret
+
+
+def test_is_production(monkeypatch) -> None:
+    settings = Settings(_env_file=None, environment="production")
+    assert settings.is_production is True
+    assert settings.is_development is False
+
+
+def test_is_development(monkeypatch) -> None:
+    settings = Settings(_env_file=None, environment="development")
+    assert settings.is_production is False
+    assert settings.is_development is True
+
+
+def test_is_staging(monkeypatch) -> None:
+    settings = Settings(_env_file=None, environment="staging")
+    assert settings.is_production is False
+    assert settings.is_development is False
+
+
+def test_apply_default_review_triggers() -> None:
+    # Uses default github_app_bot_login = "searchlightai[bot]"
+    settings = Settings(_env_file=None)
+    assert settings.review_trigger_phrases == [
+        "@searchlightai please review again",
+        "@searchlightai re-review",
+        "/ai-review",
+    ]
+
+
+def test_apply_default_review_triggers_with_custom_bot_login() -> None:
+    settings = Settings(_env_file=None, github_app_bot_login="custom-bot[bot]")
+    assert settings.review_trigger_phrases == [
+        "@custom-bot please review again",
+        "@custom-bot re-review",
+        "/ai-review",
+    ]
+
+
+def test_apply_default_review_triggers_no_bot_suffix() -> None:
+    settings = Settings(_env_file=None, github_app_bot_login="my-bot")
+    assert settings.review_trigger_phrases == [
+        "@my-bot please review again",
+        "@my-bot re-review",
+        "/ai-review",
+    ]
+
+
+def test_custom_review_triggers() -> None:
+    custom_triggers = ["please re-check", "/scan"]
+    settings = Settings(_env_file=None, review_trigger_phrases=custom_triggers)
+    assert settings.review_trigger_phrases == custom_triggers

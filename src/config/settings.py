@@ -127,6 +127,11 @@ class Settings(BaseSettings):
         description="Pinecone index name for RAG knowledge base",
     )
 
+    pinecone_codebase_index_name: str = Field(
+        default="codebase-index",
+        description="Pinecone index name for codebase semantic search (distinct from style guide index)",
+    )
+
     # Database Configuration
     database_url: str = Field(
         default="postgresql://postgres:password@localhost:5432/ai_code_reviewer_dev",  # pragma: allowlist secret

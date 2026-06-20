@@ -1,6 +1,5 @@
 """Index coding convention documents into Pinecone vector database."""
 
-import argparse
 import os
 import sys
 from pathlib import Path
@@ -50,12 +49,8 @@ def chunk_documents(documents: list, chunk_size: int = 1000, chunk_overlap: int 
     return text_splitter.split_documents(documents)
 
 
-def index_documents(specific_file: str = None):
-    """Index all documents from configuration into Pinecone.
-
-    Args:
-        specific_file: Optional relative file path (e.g., 'Python/PEP8.pdf') to index only that file
-    """
+def index_documents():
+    """Index all documents from configuration into Pinecone."""
     # Validate environment variables
     api_key = os.getenv("PINECONE_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -79,10 +74,7 @@ def index_documents(specific_file: str = None):
         return False
 
     print("=" * 70)
-    if specific_file:
-        print(f"Document Indexing: {specific_file}")
-    else:
-        print("Document Indexing for RAG Knowledge Base")
+    print("Document Indexing for RAG Knowledge Base")
     print("=" * 70)
     print()
 
@@ -114,17 +106,7 @@ def index_documents(specific_file: str = None):
     # Load document configuration
     print("Loading document configuration...")
     doc_configs = load_documents_config(config_path)
-
-    # Filter to specific file if requested
-    if specific_file:
-        doc_configs = [dc for dc in doc_configs if dc["file_path"] == specific_file]
-        if not doc_configs:
-            print(f" Error: File '{specific_file}' not found in documents.yaml")
-            print("   Make sure the path matches exactly (e.g., 'Python/PEP8.pdf')")
-            return False
-        print(f" Found configuration for: {specific_file}")
-    else:
-        print(f" Found {len(doc_configs)} documents to index")
+    print(f" Found {len(doc_configs)} documents to index")
     print()
 
     # Process each document
@@ -229,26 +211,5 @@ def index_documents(specific_file: str = None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Index coding convention documents into Pinecone",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Index all documents
-  python scripts/index_documents.py
-
-  # Index a specific file
-  python scripts/index_documents.py --file "Python/Fluent_Python.pdf"
-  python scripts/index_documents.py -f "TypeScript/Programming TypeScript - Boris Cherny - O'Reilly (2019).pdf"
-        """,
-    )
-    parser.add_argument(
-        "-f",
-        "--file",
-        type=str,
-        help="Index only this specific file (relative path from Coding Conventions/, e.g., 'Python/PEP8.pdf')",
-    )
-
-    args = parser.parse_args()
-    success = index_documents(specific_file=args.file)
+    success = index_documents()
     sys.exit(0 if success else 1)

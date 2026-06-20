@@ -83,3 +83,6 @@ obomighieai.*.private-key.pem
 CLAUDE.md
 CLAUDE.local.md
 /doc/
+
+# Groundup mentor session files
+.groundup/

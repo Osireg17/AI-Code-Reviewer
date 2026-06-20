@@ -3,6 +3,8 @@
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from github.PullRequest import PullRequest
 from github.Repository import Repository
@@ -42,9 +44,9 @@ class CodebaseIndexService:
         try:
             self.pc = Pinecone(api_key=settings.pinecone_api_key)
             existing_indexes = [idx.name for idx in self.pc.list_indexes().indexes]
-            if settings.pinecone_index_name not in existing_indexes:
+            if settings.pinecone_codebase_index_name not in existing_indexes:
                 logger.error(
-                    f"Pinecone index '{settings.pinecone_index_name}' does not exist. "
+                    f"Pinecone index '{settings.pinecone_codebase_index_name}' does not exist. "
                     f"Available indexes: {existing_indexes}. "
                     f"Run 'python scripts/setup_pinecone.py' to create it."
                 )
@@ -52,7 +54,7 @@ class CodebaseIndexService:
                 self.index = None
                 self.embeddings = None
                 return
-            self.index = self.pc.Index(settings.pinecone_index_name)
+            self.index = self.pc.Index(settings.pinecone_codebase_index_name)
             api_key_callable: Callable[[], str] | None = None
             if settings.openai_api_key:
 
@@ -65,7 +67,7 @@ class CodebaseIndexService:
                 api_key=api_key_callable,
             )
             logger.info(
-                f"Codebase index service initialized with index: {settings.pinecone_index_name}"
+                f"Codebase index service initialized with index: {settings.pinecone_codebase_index_name}"
             )
         except Exception as e:
             logger.error(f"Failed to initialize codebase index service: {e}")
@@ -168,7 +170,7 @@ class CodebaseIndexService:
         return IndexingResult(files_indexed=files_indexed, files_skipped=skipped_files)
 
     def _detect_language(self, file_path: str) -> str | None:
-        file_extension = file_path.split(".")[-1]
+        file_extension = Path(file_path).suffix.lower().lstrip(".")
         if file_extension == "py":
             return "python"
         elif file_extension in ["js", "jsx"]:
@@ -204,7 +206,6 @@ class CodebaseIndexService:
         except Exception as e:
             raise ValueError(f"Failed to load language {language}: {e}")  # noqa: B904
 
-        # 2. PARSE the content bytes using a tree-sitter Parser configured for that language
         parser = Parser()
         parser.set_language(lang)
 
@@ -212,10 +213,6 @@ class CodebaseIndexService:
         tree = parser.parse(content_bytes)
         root = tree.root_node
 
-        # 3. FOR EACH function definition node in the syntax tree:
-        results: list[dict[str, str | list[str]]] = []
-
-        # Define query patterns for each language to find function definitions
         func_query_patterns = {
             "python": "(function_definition) @function",
             "javascript": """
@@ -242,7 +239,7 @@ class CodebaseIndexService:
 
         query_string = func_query_patterns.get(normalized_lang, "")
         if not query_string:
-            return results
+            return []
 
         try:
             query = lang.query(query_string)
@@ -251,9 +248,8 @@ class CodebaseIndexService:
             logger.error(
                 f"Error querying AST for functions in language {language}: {e}"
             )
-            return results
+            return []
 
-        # Define query patterns for call expressions
         call_query_patterns = {
             "python": """
                 (call function: (identifier) @call_name)
@@ -279,58 +275,61 @@ class CodebaseIndexService:
         call_pattern = call_query_patterns.get(normalized_lang, "")
         call_query = lang.query(call_pattern) if call_pattern else None
 
+        results: list[dict[str, str | list[str]]] = []
         for func_node, _ in captures:
-            # a. EXTRACT the function name from the node
-            name_node = func_node.child_by_field_name("name")
-            if not name_node:
-                continue
-
-            function_name = content_bytes[
-                name_node.start_byte : name_node.end_byte
-            ].decode("utf-8")
-
-            # b. EXTRACT the function signature text (name + parameters + return annotation if present)
-            body_node = func_node.child_by_field_name("body")
-            if body_node:
-                signature_bytes = content_bytes[
-                    name_node.start_byte : body_node.start_byte
-                ]
-            else:
-                signature_bytes = content_bytes[
-                    name_node.start_byte : func_node.end_byte
-                ]
-
-            signature_text = signature_bytes.decode("utf-8")
-
-            # Clean the signature (strip trailing colon, brace, semicolon, whitespace)
-            signature = signature_text.strip()
-            while signature and (
-                signature[-1] in ("{", ":", ";", " ") or signature.endswith("\n")
-            ):
-                signature = signature[:-1].strip()
-
-            # c. EXTRACT all call expression names that appear within this function's body
-            calls = []
-            if body_node and call_query:
-                try:
-                    call_captures = call_query.captures(body_node)
-                    for call_node, _ in call_captures:
-                        call_name = content_bytes[
-                            call_node.start_byte : call_node.end_byte
-                        ].decode("utf-8")
-                        if call_name not in calls:
-                            calls.append(call_name)
-                except Exception as e:
-                    logger.warning(
-                        f"Error querying call expressions inside function {function_name}: {e}"
-                    )
-
-            # d. STORE {name, signature, calls} in the results list
-            results.append(
-                {"name": function_name, "signature": signature, "calls": calls}
+            func_info = self._extract_function_info(
+                func_node=func_node,
+                call_query=call_query,
+                content_bytes=content_bytes,
             )
+            if func_info:
+                results.append(func_info)
 
         return results
+
+    def _extract_function_info(
+        self,
+        func_node: Any,
+        call_query: Any,
+        content_bytes: bytes,
+    ) -> dict[str, str | list[str]] | None:
+        name_node = func_node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        function_name = content_bytes[name_node.start_byte : name_node.end_byte].decode(
+            "utf-8"
+        )
+
+        body_node = func_node.child_by_field_name("body")
+        if body_node:
+            signature_bytes = content_bytes[name_node.start_byte : body_node.start_byte]
+        else:
+            signature_bytes = content_bytes[name_node.start_byte : func_node.end_byte]
+
+        signature_text = signature_bytes.decode("utf-8")
+        signature = signature_text.strip()
+        while signature and (
+            signature[-1] in ("{", ":", ";", " ") or signature.endswith("\n")
+        ):
+            signature = signature[:-1].strip()
+
+        calls: list[str] = []
+        if body_node and call_query:
+            try:
+                call_captures = call_query.captures(body_node)
+                for call_node, _ in call_captures:
+                    call_name = content_bytes[
+                        call_node.start_byte : call_node.end_byte
+                    ].decode("utf-8")
+                    if call_name not in calls:
+                        calls.append(call_name)
+            except Exception as e:
+                logger.warning(
+                    f"Error querying call expressions inside function {function_name}: {e}"
+                )
+
+        return {"name": function_name, "signature": signature, "calls": calls}
 
     async def _embed_and_upsert(
         self,

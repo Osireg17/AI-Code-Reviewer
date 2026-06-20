@@ -1,0 +1,20 @@
+{
+  "mode": "implement",
+  "task": "Semantic codebase indexing: AST-aware (tree-sitter) per-file indexing into a separate Pinecone index, queried by the agent via a new tool with semantic/exact_call mode switch. Indexing runs sequentially before each PR review.",
+  "phase": "per_file_loop",
+  "current_file": "src/services/codebase_index_service.py",
+  "files": [
+    { "path": "src/config/settings.py", "status": "complete", "note": "MODIFIED - pinecone_codebase_index_name added" },
+    { "path": "src/services/codebase_index_service.py", "status": "in_progress", "note": "NEW - tree-sitter parsing, embedding, Pinecone upsert. Pseudocode written, awaiting implementation + tests." },
+    { "path": "src/tools/codebase_search_tools.py", "status": "pending", "note": "NEW - agent tool with semantic/exact_call mode" },
+    { "path": "src/api/handlers/pr_review_handler.py", "status": "pending", "note": "MODIFIED - call indexing service before agent" },
+    { "path": "src/agents/code_reviewer.py", "status": "pending", "note": "MODIFIED - register new tool, retire old search_codebase" },
+    { "path": "pyproject.toml", "status": "pending", "note": "MODIFIED - add tree-sitter dependencies" },
+    { "path": "src/services/github_search_service.py", "status": "pending", "note": "DEPRECATED" },
+    { "path": "src/tools/github_search_tools.py", "status": "pending", "note": "DEPRECATED" }
+  ],
+  "skipped_gates": ["tests for settings.py pinecone_codebase_index_name field"],
+  "flow_diagram": "webhook → handle_pull_request_event → enqueue_review → run_review_job → handle_pr_review → [index_changed_files (NEW, sequential) → abort on service failure, skip+log on per-file parse failure] → _run_code_review_agent (new tool: search_codebase with semantic/exact_call mode)",
+  "scope_file": null,
+  "updated_at": "2026-06-20T00:00:00Z"
+}

@@ -18,6 +18,9 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 _PINECONE_UPSERT_BATCH_SIZE = 100
+# Dimension of text-embedding-3-small. Used for the dummy vector in exact_call metadata queries.
+# If the embedding model changes, update this constant to match the new model's output dimension.
+_EMBEDDING_DIMENSION = 1536
 
 
 @dataclass
@@ -337,9 +340,6 @@ class CodebaseIndexService:
         namespace: str,
         file_path: str,
     ) -> None:
-        if not self.is_available():
-            raise RuntimeError("Codebase index service is not available")
-
         embeddings_service = self.embeddings
         index = self.index
         if embeddings_service is None or index is None:
@@ -447,7 +447,7 @@ class CodebaseIndexService:
             filter_dict["calls"] = {"$in": [query]}
 
             response = index.query(
-                vector=[0.0] * 1536,
+                vector=[0.0] * _EMBEDDING_DIMENSION,
                 filter=filter_dict,
                 top_k=top_k,
                 namespace=namespace,

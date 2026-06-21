@@ -156,12 +156,12 @@ def test_parse_functions_load_language_error(mock_get_language):
 
 
 @pytest.mark.asyncio
-async def test_embed_and_upsert_service_unavailable():
-    """Test embed_and_upsert raises RuntimeError if codebase service is unavailable."""
+async def test_embed_and_upsert_raises_when_clients_none():
+    """Test _embed_and_upsert raises RuntimeError when index or embeddings clients are None."""
     service = CodebaseIndexService()
-    with (
-        patch.object(service, "is_available", return_value=False),
-        pytest.raises(RuntimeError, match="Codebase index service is not available"),
+    # Clients are None by default (no API key in test env)
+    with pytest.raises(
+        RuntimeError, match="Codebase index service components are not initialized"
     ):
         await service._embed_and_upsert([{"name": "test"}], "namespace", "file.py")
 

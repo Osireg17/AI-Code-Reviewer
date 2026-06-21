@@ -44,15 +44,13 @@ async def search_codebase(
             "results": [],
         }
 
-    cache_key = f"codebase_search:{query}:{mode}:{language}:{top_k}"
+    namespace = ctx.deps.repo_full_name.lower().replace("/", "__")
+    cache_key = f"codebase_search:{namespace}:{query}:{mode}:{language}:{top_k}"
     if cache_key in ctx.deps._cache:
         logger.debug(f"Returning cached codebase search results for {cache_key}")
         return cast(dict[Any, Any], ctx.deps._cache[cache_key])
 
     try:
-        # Pull repo_full_name, replace / with __
-        namespace = ctx.deps.repo_full_name.lower().replace("/", "__")
-
         results = await codebase_index_service.search_codebase(
             query=query,
             namespace=namespace,

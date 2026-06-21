@@ -14,6 +14,7 @@ from src.database.db import SessionLocal
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.models.review_state import ReviewState
+from src.services.codebase_index_service import codebase_index_service
 from src.services.github_auth import GitHubAppAuth
 from src.utils.rate_limiter import with_exponential_backoff
 
@@ -78,6 +79,34 @@ async def handle_pr_review(
                 is_incremental_review=is_incremental,
                 base_commit_sha=base_commit_sha,
             )
+
+            # Index changed files for semantic codebase search — runs before agent
+            if codebase_index_service.is_available():
+                try:
+                    indexing_result = await codebase_index_service.index_changed_files(
+                        repo, pr
+                    )
+                    logger.info(
+                        "Indexed %d files for PR #%d (%d skipped)",
+                        indexing_result.files_indexed,
+                        pr_number,
+                        len(indexing_result.files_skipped),
+                    )
+                    for skipped in indexing_result.files_skipped:
+                        logger.debug(
+                            "Skipped indexing %s: %s",
+                            skipped["file"],
+                            skipped["reason"],
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Codebase indexing failed for PR #%d, proceeding without it: %s",
+                        pr_number,
+                        e,
+                    )
+            else:
+                logger.debug("Codebase index unavailable — skipping pre-indexing")
+
             await _post_progress_comment_if_needed(pr, action)
             validated_result = await _run_code_review_agent(
                 repo_name, pr_number, deps, agent

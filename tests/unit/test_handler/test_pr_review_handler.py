@@ -1,4 +1,5 @@
 import unittest
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from src.api.handlers.pr_review_handler import (
 )
 from src.models.outputs import CodeReviewResult, ReviewComment, ReviewSummary
 from src.models.review_state import ReviewState
+from src.services.codebase_index_service import IndexingResult
 
 
 @pytest.mark.asyncio
@@ -178,6 +180,252 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Auth failed", str(context.exception))
         # Session should still be closed in finally block
         self.mock_session.close.assert_called_once()
+
+    @patch("src.api.handlers.pr_review_handler.codebase_index_service")
+    @patch("src.api.handlers.pr_review_handler.validate_review_result")
+    @patch("src.api.handlers.pr_review_handler.Github")
+    @patch("src.api.handlers.pr_review_handler.ReviewDependencies")
+    @patch("src.api.handlers.pr_review_handler._determine_review_type")
+    @patch("src.api.handlers.pr_review_handler._post_progress_comment_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_inline_comments_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_summary_review_if_needed")
+    @patch("src.api.handlers.pr_review_handler._update_review_state")
+    async def test_indexing_called_before_agent(
+        self,
+        mock_update: Any,
+        mock_summary: Any,
+        mock_inline: Any,
+        mock_progress: Any,
+        mock_determine: Any,
+        mock_deps: Any,
+        mock_github: Any,
+        mock_validate_result: Any,
+        mock_index_service: Any,
+    ) -> None:
+        """Test that indexing is called before the agent runs."""
+        # Arrange
+        mock_session_factory = Mock(return_value=self.mock_session)
+        mock_pr = MagicMock(spec=PullRequest)
+        mock_pr.state = "open"
+        mock_pr.number = self.pr_number
+        mock_pr.head.sha = "abc123def456"  # pragma: allowlist secret
+
+        mock_repo = MagicMock()
+        mock_repo.get_pull.return_value = mock_pr
+
+        mock_github_client = MagicMock()
+        mock_github_client.get_repo.return_value = mock_repo
+        mock_github.return_value = mock_github_client
+
+        self.mock_github_auth.get_installation_access_token = AsyncMock(
+            return_value="ghs_test_token"
+        )
+
+        mock_determine.return_value = (False, None, None)
+
+        mock_index_service.is_available.return_value = True
+        mock_index_service.index_changed_files = AsyncMock(
+            return_value=IndexingResult(files_indexed=2, files_skipped=[])
+        )
+
+        mock_agent_result = MagicMock()
+        mock_agent_result.output = MagicMock()
+        self.mock_agent.run = AsyncMock(return_value=mock_agent_result)
+
+        mock_validated_result = CodeReviewResult(
+            summary=ReviewSummary(
+                overall_assessment="Good",
+                files_reviewed=1,
+                recommendation="APPROVE",
+            ),
+            comments=[],
+        )
+        mock_validate_result.return_value = mock_validated_result
+
+        # Track call order
+        call_order = []
+
+        original_index = mock_index_service.index_changed_files
+
+        async def track_index(*args: Any, **kwargs: Any) -> Any:
+            call_order.append("index_changed_files")
+            return await original_index(*args, **kwargs)
+
+        mock_index_service.index_changed_files = track_index
+
+        original_run = self.mock_agent.run
+
+        async def track_run(*args: Any, **kwargs: Any) -> Any:
+            call_order.append("agent.run")
+            return await original_run(*args, **kwargs)
+
+        self.mock_agent.run = track_run
+
+        # Act
+        await handle_pr_review(
+            repo_name=self.repo_name,
+            pr_number=self.pr_number,
+            action="opened",
+            session_factory=mock_session_factory,
+            github_auth=self.mock_github_auth,
+            agent=self.mock_agent,
+        )
+
+        # Assert
+        self.assertIn("index_changed_files", call_order)
+        self.assertIn("agent.run", call_order)
+        self.assertTrue(
+            call_order.index("index_changed_files") < call_order.index("agent.run")
+        )
+
+    @patch("src.api.handlers.pr_review_handler.codebase_index_service")
+    @patch("src.api.handlers.pr_review_handler.validate_review_result")
+    @patch("src.api.handlers.pr_review_handler.Github")
+    @patch("src.api.handlers.pr_review_handler.ReviewDependencies")
+    @patch("src.api.handlers.pr_review_handler._determine_review_type")
+    @patch("src.api.handlers.pr_review_handler._post_progress_comment_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_inline_comments_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_summary_review_if_needed")
+    @patch("src.api.handlers.pr_review_handler._update_review_state")
+    async def test_review_continues_when_indexing_fails(
+        self,
+        mock_update: Any,
+        mock_summary: Any,
+        mock_inline: Any,
+        mock_progress: Any,
+        mock_determine: Any,
+        mock_deps: Any,
+        mock_github: Any,
+        mock_validate_result: Any,
+        mock_index_service: Any,
+    ) -> None:
+        """Test that review continues even if indexing raises an exception."""
+        # Arrange
+        mock_session_factory = Mock(return_value=self.mock_session)
+        mock_pr = MagicMock(spec=PullRequest)
+        mock_pr.state = "open"
+        mock_pr.number = self.pr_number
+        mock_pr.head.sha = "abc123def456"  # pragma: allowlist secret
+
+        mock_repo = MagicMock()
+        mock_repo.get_pull.return_value = mock_pr
+
+        mock_github_client = MagicMock()
+        mock_github_client.get_repo.return_value = mock_repo
+        mock_github.return_value = mock_github_client
+
+        self.mock_github_auth.get_installation_access_token = AsyncMock(
+            return_value="ghs_test_token"
+        )
+
+        mock_determine.return_value = (False, None, None)
+
+        mock_index_service.is_available.return_value = True
+        mock_index_service.index_changed_files = AsyncMock(
+            side_effect=Exception("Indexing failed!")
+        )
+
+        mock_agent_result = MagicMock()
+        mock_agent_result.output = MagicMock()
+        self.mock_agent.run = AsyncMock(return_value=mock_agent_result)
+
+        mock_validated_result = CodeReviewResult(
+            summary=ReviewSummary(
+                overall_assessment="Good",
+                files_reviewed=1,
+                recommendation="APPROVE",
+            ),
+            comments=[],
+        )
+        mock_validate_result.return_value = mock_validated_result
+
+        # Act
+        await handle_pr_review(
+            repo_name=self.repo_name,
+            pr_number=self.pr_number,
+            action="opened",
+            session_factory=mock_session_factory,
+            github_auth=self.mock_github_auth,
+            agent=self.mock_agent,
+        )
+
+        # Assert
+        mock_index_service.index_changed_files.assert_called_once()
+        self.mock_agent.run.assert_called_once()
+
+    @patch("src.api.handlers.pr_review_handler.codebase_index_service")
+    @patch("src.api.handlers.pr_review_handler.validate_review_result")
+    @patch("src.api.handlers.pr_review_handler.Github")
+    @patch("src.api.handlers.pr_review_handler.ReviewDependencies")
+    @patch("src.api.handlers.pr_review_handler._determine_review_type")
+    @patch("src.api.handlers.pr_review_handler._post_progress_comment_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_inline_comments_if_needed")
+    @patch("src.api.handlers.pr_review_handler._post_summary_review_if_needed")
+    @patch("src.api.handlers.pr_review_handler._update_review_state")
+    async def test_indexing_skipped_when_unavailable(
+        self,
+        mock_update: Any,
+        mock_summary: Any,
+        mock_inline: Any,
+        mock_progress: Any,
+        mock_determine: Any,
+        mock_deps: Any,
+        mock_github: Any,
+        mock_validate_result: Any,
+        mock_index_service: Any,
+    ) -> None:
+        """Test that indexing is skipped when codebase_index_service is unavailable."""
+        # Arrange
+        mock_session_factory = Mock(return_value=self.mock_session)
+        mock_pr = MagicMock(spec=PullRequest)
+        mock_pr.state = "open"
+        mock_pr.number = self.pr_number
+        mock_pr.head.sha = "abc123def456"  # pragma: allowlist secret
+
+        mock_repo = MagicMock()
+        mock_repo.get_pull.return_value = mock_pr
+
+        mock_github_client = MagicMock()
+        mock_github_client.get_repo.return_value = mock_repo
+        mock_github.return_value = mock_github_client
+
+        self.mock_github_auth.get_installation_access_token = AsyncMock(
+            return_value="ghs_test_token"
+        )
+
+        mock_determine.return_value = (False, None, None)
+
+        mock_index_service.is_available.return_value = False
+        mock_index_service.index_changed_files = AsyncMock()
+
+        mock_agent_result = MagicMock()
+        mock_agent_result.output = MagicMock()
+        self.mock_agent.run = AsyncMock(return_value=mock_agent_result)
+
+        mock_validated_result = CodeReviewResult(
+            summary=ReviewSummary(
+                overall_assessment="Good",
+                files_reviewed=1,
+                recommendation="APPROVE",
+            ),
+            comments=[],
+        )
+        mock_validate_result.return_value = mock_validated_result
+
+        # Act
+        await handle_pr_review(
+            repo_name=self.repo_name,
+            pr_number=self.pr_number,
+            action="opened",
+            session_factory=mock_session_factory,
+            github_auth=self.mock_github_auth,
+            agent=self.mock_agent,
+        )
+
+        # Assert
+        mock_index_service.is_available.assert_called_once()
+        mock_index_service.index_changed_files.assert_not_called()
+        self.mock_agent.run.assert_called_once()
 
 
 @pytest.mark.asyncio

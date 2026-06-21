@@ -11,7 +11,8 @@ from src.config.settings import settings
 from src.models.dependencies import ReviewDependencies
 from src.models.outputs import CodeReviewResult
 from src.prompts.code_reviewer_prompt import SYSTEM_PROMPT
-from src.tools import conversation_tools, github_search_tools, github_tools, rag_tools
+from src.tools import conversation_tools, github_tools, rag_tools
+from src.tools.codebase_search_tools import search_codebase as _search
 
 logger = logging.getLogger(__name__)
 
@@ -185,26 +186,27 @@ async def search_style_guides(
 async def search_codebase(
     ctx: RunContext[ReviewDependencies],
     query: str,
-    language_filter: str | None = None,
+    mode: str = "semantic",
+    language: str | None = None,
+    top_k: int = 5,
 ) -> dict:
-    """Search the repository for existing code patterns.
+    """Search the indexed codebase for functions and call relationships.
 
-    Use this to check naming conventions, error handling patterns,
-    and similar implementations before making review suggestions.
-    Results are cached per query+language combination.
-
-    IMPORTANT: This uses GitHub keyword search, not semantic search.
-    Use short, literal terms that appear verbatim in source code (e.g., "handleError",
-    "try catch", "snake_case"). Long descriptive phrases return 0 results.
+    Use this before reviewing to understand how changed functions are used across the repo.
+    Two modes:
+      - "semantic": vector similarity — use for "how is X implemented?", "show me error handling patterns"
+      - "exact_call": metadata filter — use for "what calls process_payment?" (impact analysis)
 
     Args:
-        query: Short literal keyword(s) to find in source code (max ~30 chars)
-        language_filter: Optional language filter (e.g., "python", "javascript")
+        query: Function name (exact_call mode) or natural language question (semantic mode)
+        mode: "semantic" | "exact_call"
+        language: Optional filter by language (e.g. "python")
+        top_k: Number of results (default: 5)
 
     Returns:
-        Dict with success, query, results_count, and results list
+        Dict with results list — each result has function_name, file_path, signature, calls, score
     """
-    return await github_search_tools.search_codebase(ctx, query, language_filter)
+    return await _search(ctx, query, mode, language, top_k)
 
 
 @code_review_agent.tool

@@ -498,3 +498,112 @@ async def test_index_changed_files_embed_failure_raises():
             match="Failed to embed and upsert file main.py to codebase index",
         ):
             await service.index_changed_files(repo, pr)
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.CodebaseIndexService.is_available")
+async def test_search_codebase_success_semantic(mock_is_available):
+    """Test successful codebase search in semantic mode via service."""
+    mock_is_available.return_value = True
+    service = CodebaseIndexService()
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    service.embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+    mock_match = MagicMock()
+    mock_match.score = 0.85
+    mock_match.metadata = {
+        "file_path": "src/main.py",
+        "function_name": "my_func",
+        "calls": [],
+        "language": "python",
+        "text": "def my_func():\ncalls: ",
+    }
+
+    mock_response = MagicMock()
+    mock_response.matches = [mock_match]
+    service.index.query.return_value = mock_response
+
+    results = await service.search_codebase(
+        query="test",
+        namespace="owner__repo",
+        mode="semantic",
+        language="python",
+        top_k=3,
+    )
+
+    assert len(results) == 1
+    assert results[0]["function_name"] == "my_func"
+    assert results[0]["file_path"] == "src/main.py"
+    assert results[0]["signature"] == "def my_func():"
+    assert results[0]["calls"] == []
+    assert results[0]["score"] == 0.85
+
+    service.embeddings.aembed_query.assert_called_once_with("test")
+    service.index.query.assert_called_once_with(
+        vector=[0.1] * 1536,
+        filter={"language": "python"},
+        top_k=3,
+        namespace="owner__repo",
+        include_metadata=True,
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.CodebaseIndexService.is_available")
+async def test_search_codebase_success_exact_call(mock_is_available):
+    """Test successful codebase search in exact_call mode via service."""
+    mock_is_available.return_value = True
+    service = CodebaseIndexService()
+    service.index = MagicMock()
+
+    mock_match = MagicMock()
+    mock_match.score = 0.95
+    mock_match.metadata = {
+        "file_path": "src/handlers/checkout.py",
+        "function_name": "checkout",
+        "calls": ["process_payment", "send_receipt"],
+        "language": "python",
+        "text": "async def checkout(cart: Cart) -> Order\ncalls: process_payment, send_receipt",
+    }
+
+    mock_response = MagicMock()
+    mock_response.matches = [mock_match]
+    service.index.query.return_value = mock_response
+
+    results = await service.search_codebase(
+        query="process_payment",
+        namespace="owner__repo",
+        mode="exact_call",
+        top_k=5,
+    )
+
+    assert len(results) == 1
+    assert results[0]["function_name"] == "checkout"
+    assert results[0]["file_path"] == "src/handlers/checkout.py"
+    assert results[0]["signature"] == "async def checkout(cart: Cart) -> Order"
+    assert results[0]["calls"] == ["process_payment", "send_receipt"]
+    assert results[0]["score"] == 0.95
+
+    service.index.query.assert_called_once_with(
+        vector=[0.0] * 1536,
+        filter={"calls": {"$in": ["process_payment"]}},
+        top_k=5,
+        namespace="owner__repo",
+        include_metadata=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_codebase_service_unavailable():
+    """Test search_codebase returns empty list when service is unavailable."""
+    service = CodebaseIndexService()
+    # Ensure it's unavailable
+    service.pc = None
+
+    results = await service.search_codebase(
+        query="test",
+        namespace="owner__repo",
+    )
+    assert results == []

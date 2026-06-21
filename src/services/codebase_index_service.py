@@ -340,8 +340,10 @@ class CodebaseIndexService:
         if not self.is_available():
             raise RuntimeError("Codebase index service is not available")
 
-        assert self.embeddings is not None
-        assert self.index is not None
+        embeddings_service = self.embeddings
+        index = self.index
+        if embeddings_service is None or index is None:
+            raise RuntimeError("Codebase index service components are not initialized")
 
         if not chunks:
             return
@@ -383,7 +385,7 @@ class CodebaseIndexService:
 
         # 4. COLLECT all (id, embedding, metadata) tuples into a list
         #    CALL the embeddings model with all texts in one request (batch embed)
-        embeddings = await self.embeddings.aembed_documents(texts_to_embed)
+        embeddings = await embeddings_service.aembed_documents(texts_to_embed)
 
         vectors = [
             (vector_ids[i], embeddings[i], metadata_list[i]) for i in range(len(chunks))
@@ -393,7 +395,7 @@ class CodebaseIndexService:
         #    UPSERT the batch to Pinecone under the given namespace
         for i in range(0, len(vectors), _PINECONE_UPSERT_BATCH_SIZE):
             batch = vectors[i : i + _PINECONE_UPSERT_BATCH_SIZE]
-            self.index.upsert(vectors=batch, namespace=namespace)
+            index.upsert(vectors=batch, namespace=namespace)
 
     async def search_codebase(
         self,
@@ -419,18 +421,22 @@ class CodebaseIndexService:
             logger.warning("Codebase index service is not available")
             return []
 
-        assert self.index is not None
+        index = self.index
+        if index is None:
+            raise RuntimeError("Pinecone index is not initialized")
 
         filter_dict: dict[str, Any] = {}
         if language:
             filter_dict["language"] = language.lower()
 
         if mode == "semantic":
-            assert self.embeddings is not None
+            embeddings_service = self.embeddings
+            if embeddings_service is None:
+                raise RuntimeError("Embeddings service is not initialized")
             # Embed the query string
-            query_vector = await self.embeddings.aembed_query(query)
+            query_vector = await embeddings_service.aembed_query(query)
 
-            response = self.index.query(
+            response = index.query(
                 vector=query_vector,
                 filter=filter_dict or None,
                 top_k=top_k,
@@ -440,7 +446,7 @@ class CodebaseIndexService:
         elif mode == "exact_call":
             filter_dict["calls"] = {"$in": [query]}
 
-            response = self.index.query(
+            response = index.query(
                 vector=[0.0] * 1536,
                 filter=filter_dict,
                 top_k=top_k,

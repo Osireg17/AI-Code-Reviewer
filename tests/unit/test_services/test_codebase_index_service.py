@@ -360,7 +360,10 @@ async def test_index_changed_files_success_flow():
         assert len(result.files_skipped) == 3
 
         # Verify skipped reasons
-        assert result.files_skipped[0] == {"file": "old.py", "reason": "file removed"}
+        assert result.files_skipped[0] == {
+            "file": "old.py",
+            "reason": "file removed — vectors deleted",
+        }
         assert result.files_skipped[1] == {
             "file": "doc.md",
             "reason": "unsupported language",
@@ -607,3 +610,253 @@ async def test_search_codebase_service_unavailable():
         namespace="owner__repo",
     )
     assert results == []
+
+
+@pytest.mark.asyncio
+async def test_removed_file_deletes_vectors() -> None:
+    """Test that a removed file triggers Pinecone vector deletion."""
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+    assert service.is_available()
+
+    repo = MagicMock()
+    pr = MagicMock()
+
+    # Mock namespace owner/repo
+    pr.base.repo.owner.login = "owner"
+    pr.base.repo.name = "repo"
+
+    # Mock files in PR: 1 removed file
+    mock_file = MagicMock()
+    mock_file.filename = "src/old_file.py"
+    mock_file.status = "removed"
+    pr.get_files.return_value = [mock_file]
+
+    result = await service.index_changed_files(repo, pr)
+
+    # Assert result includes skip reason
+    assert result.files_indexed == 0
+    assert len(result.files_skipped) == 1
+    assert result.files_skipped[0]["file"] == "src/old_file.py"
+    assert "file removed — vectors deleted" in result.files_skipped[0]["reason"]
+
+    # Assert Pinecone delete was called
+    service.index.delete.assert_called_once_with(
+        filter={"file_path": "src/old_file.py"}, namespace="owner__repo"
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.settings")
+@patch("httpx.get")
+async def test_namespace_exists_returns_true_on_200(mock_get, mock_settings) -> None:
+    """Test namespace_exists returns True when httpx response is 200."""
+    mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
+    mock_settings.pinecone_codebase_index_name = "test-index"
+
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    mock_index_desc = MagicMock()
+    mock_index_desc.host = "test-host.pinecone.io"
+    service.pc.describe_index.return_value = mock_index_desc
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_get.return_value = mock_resp
+
+    result = service.namespace_exists("test-namespace")
+
+    assert result is True
+    mock_get.assert_called_once_with(
+        "https://test-host.pinecone.io/namespaces/test-namespace",
+        headers={"Api-Key": "test-key"},  # pragma: allowlist secret
+        timeout=10.0,
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.settings")
+@patch("httpx.get")
+async def test_namespace_exists_returns_false_on_404(mock_get, mock_settings) -> None:
+    """Test namespace_exists returns False when httpx response is 404."""
+    mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
+    mock_settings.pinecone_codebase_index_name = "test-index"
+
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    mock_index_desc = MagicMock()
+    mock_index_desc.host = "test-host.pinecone.io"
+    service.pc.describe_index.return_value = mock_index_desc
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_get.return_value = mock_resp
+
+    result = service.namespace_exists("test-namespace")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.settings")
+@patch("httpx.get")
+async def test_namespace_exists_returns_false_on_exception(
+    mock_get, mock_settings
+) -> None:
+    """Test namespace_exists returns False when httpx call raises exception."""
+    mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
+    mock_settings.pinecone_codebase_index_name = "test-index"
+
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    mock_index_desc = MagicMock()
+    mock_index_desc.host = "test-host.pinecone.io"
+    service.pc.describe_index.return_value = mock_index_desc
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    mock_get.side_effect = Exception("HTTP error")
+
+    result = service.namespace_exists("test-namespace")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.settings")
+async def test_index_full_repo_indexes_supported_files(mock_settings) -> None:
+    """Test index_full_repo indexes supported files and skips unsupported ones."""
+    mock_settings.pinecone_codebase_index_name = "test-index"
+
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    service.index = MagicMock()
+
+    mock_embeddings = AsyncMock()
+    mock_embeddings.aembed_documents.return_value = [[0.1] * 1536, [0.2] * 1536]
+    service.embeddings = mock_embeddings
+
+    repo = MagicMock()
+    repo.owner.login = "owner"
+    repo.name = "repo"
+
+    mock_tree = MagicMock()
+    elem1 = MagicMock()
+    elem1.type = "blob"
+    elem1.path = "src/main.py"
+
+    elem2 = MagicMock()
+    elem2.type = "blob"
+    elem2.path = "src/utils.py"
+
+    elem3 = MagicMock()
+    elem3.type = "blob"
+    elem3.path = "styles.css"
+
+    mock_tree.tree = [elem1, elem2, elem3]
+    repo.get_git_tree.return_value = mock_tree
+
+    file1 = MagicMock()
+    file1.decoded_content = b"def hello(): pass"
+
+    file2 = MagicMock()
+    file2.decoded_content = b"def add(x, y): return x + y"
+
+    def mock_get_contents(path, ref) -> MagicMock:
+        if path == "src/main.py":
+            return file1
+        elif path == "src/utils.py":
+            return file2
+        raise ValueError("Unknown path")
+
+    repo.get_contents.side_effect = mock_get_contents
+
+    result = await service.index_full_repo(repo)
+
+    assert result.files_indexed == 2
+    assert len(result.files_skipped) == 1
+    assert result.files_skipped[0]["file"] == "styles.css"
+    assert result.files_skipped[0]["reason"] == "unsupported language"
+
+
+@pytest.mark.asyncio
+async def test_index_full_repo_skips_blobs_on_parse_error() -> None:
+    """Test index_full_repo skips a file when parse_functions raises an exception."""
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    repo = MagicMock()
+    repo.owner.login = "owner"
+    repo.name = "repo"
+
+    mock_tree = MagicMock()
+    elem1 = MagicMock()
+    elem1.type = "blob"
+    elem1.path = "src/broken.py"
+    mock_tree.tree = [elem1]
+    repo.get_git_tree.return_value = mock_tree
+
+    file1 = MagicMock()
+    file1.decoded_content = b"def invalid syntax"
+    repo.get_contents.return_value = file1
+
+    with patch.object(
+        service, "_parse_functions", side_effect=Exception("AST parse error")
+    ):
+        result = await service.index_full_repo(repo)
+
+    assert result.files_indexed == 0
+    assert len(result.files_skipped) == 1
+    assert result.files_skipped[0]["file"] == "src/broken.py"
+    assert "parse error" in result.files_skipped[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_index_full_repo_skips_on_embed_upsert_failure():
+    """Test index_full_repo logs and skips a file if _embed_and_upsert fails."""
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    repo = MagicMock()
+    repo.owner.login = "Owner"
+    repo.name = "Repo"
+
+    mock_tree = MagicMock()
+    elem1 = MagicMock()
+    elem1.type = "blob"
+    elem1.path = "src/main.py"
+    mock_tree.tree = [elem1]
+    repo.get_git_tree.return_value = mock_tree
+
+    file1 = MagicMock()
+    file1.decoded_content = b"def run():\n    pass"
+    repo.get_contents.return_value = file1
+
+    with (
+        patch.object(
+            service,
+            "_parse_functions",
+            return_value=[{"name": "run", "signature": "def run()", "calls": []}],
+        ),
+        patch.object(
+            service,
+            "_embed_and_upsert",
+            side_effect=Exception("Pinecone connection lost"),
+        ),
+    ):
+        result = await service.index_full_repo(repo)
+
+    assert result.files_indexed == 0
+    assert len(result.files_skipped) == 1
+    assert result.files_skipped[0]["file"] == "src/main.py"
+    assert "failed to embed and upsert" in result.files_skipped[0]["reason"]

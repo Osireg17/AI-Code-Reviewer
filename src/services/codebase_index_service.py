@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 from langchain_openai import OpenAIEmbeddings
@@ -109,9 +110,23 @@ class CodebaseIndexService:
 
         # 4. FOR EACH changed file:
         for file in files:
-            # Skip removed files safely
+            # Skip removed files safely and delete their vectors
             if getattr(file, "status", None) == "removed":
-                skipped_files.append({"file": file.filename, "reason": "file removed"})
+                try:
+                    if self.index:
+                        self.index.delete(
+                            filter={"file_path": file.filename}, namespace=namespace
+                        )
+                        logger.info(
+                            f"Deleted vectors for removed file {file.filename} in namespace {namespace}"
+                        )
+                        reason = "file removed — vectors deleted"
+                    else:
+                        reason = "file removed — codebase index unavailable"
+                except Exception as e:
+                    logger.warning(f"Failed to delete vectors for {file.filename}: {e}")
+                    reason = f"file removed — failed to delete vectors: {e}"
+                skipped_files.append({"file": file.filename, "reason": reason})
                 continue
 
             # a. DETERMINE whether the file's language is supported (CALL _detect_language)
@@ -475,6 +490,102 @@ class CodebaseIndexService:
             )
 
         return results_list
+
+    def namespace_exists(self, namespace: str) -> bool:
+        """Check if a namespace exists in Pinecone codebase index using the namespaces REST endpoint.
+
+        Args:
+            namespace: The namespace to check.
+
+        Returns:
+            True if namespace exists and has vectors, False otherwise.
+        """
+        if not self.is_available() or not self.pc or settings.pinecone_api_key is None:
+            return False
+
+        try:
+            index_desc = self.pc.describe_index(settings.pinecone_codebase_index_name)
+            index_host = index_desc.host
+
+            url = f"https://{index_host}/namespaces/{namespace}"
+            headers = {"Api-Key": settings.pinecone_api_key}
+            response = httpx.get(url, headers=headers, timeout=10.0)
+            return response.status_code == 200
+        except Exception as e:
+            logger.warning(f"Error checking namespace {namespace}: {e}")
+            return False
+
+    async def index_full_repo(
+        self, repo: Repository, ref: str = "HEAD"
+    ) -> IndexingResult:
+        """Walk the entire repository tree at ref and index all supported files.
+
+        Args:
+            repo: GitHub Repository object
+            ref: Git ref (commit SHA, branch, tag) to index
+
+        Returns:
+            IndexingResult containing counts and skipped details
+        """
+        if not self.is_available():
+            raise RuntimeError("Codebase index service is not available")
+
+        owner = repo.owner.login.lower()
+        repo_name = repo.name.lower()
+        namespace = f"{owner}__{repo_name}"
+
+        try:
+            tree = repo.get_git_tree(ref, recursive=True)
+            blobs = [element for element in tree.tree if element.type == "blob"]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get Git tree: {e}") from e
+
+        files_indexed = 0
+        skipped_files = []
+
+        for blob in blobs:
+            path = blob.path
+            lang = self._detect_language(path)
+            if not lang:
+                skipped_files.append({"file": path, "reason": "unsupported language"})
+                continue
+
+            try:
+                github_file = repo.get_contents(path, ref=ref)
+                if not github_file:
+                    raise ValueError("Empty response from GitHub get_contents")
+                if isinstance(github_file, list):
+                    raise ValueError("Expected a file but received a directory listing")
+
+                content_bytes = github_file.decoded_content
+                content = content_bytes.decode("utf-8")
+            except Exception as e:
+                skipped_files.append(
+                    {"file": path, "reason": f"failed to fetch content: {e}"}
+                )
+                continue
+
+            try:
+                chunks = self._parse_functions(content, lang)
+            except Exception as e:
+                skipped_files.append({"file": path, "reason": f"parse error: {e}"})
+                continue
+
+            if not chunks:
+                skipped_files.append({"file": path, "reason": "no functions found"})
+                continue
+
+            try:
+                await self._embed_and_upsert(chunks, namespace, path)
+            except Exception as e:
+                skipped_files.append(
+                    {"file": path, "reason": f"failed to embed and upsert: {e}"}
+                )
+                continue
+
+            files_indexed += 1
+
+        return IndexingResult(files_indexed=files_indexed, files_skipped=skipped_files)
 
 
 codebase_index_service = CodebaseIndexService()

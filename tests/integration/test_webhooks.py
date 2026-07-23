@@ -179,3 +179,61 @@ def test_unsupported_event(
 
     assert response.status_code == 200
     assert "not supported" in response.json()["message"].lower()
+
+
+def test_merged_pr_triggers_reindex(
+    client: TestClient, webhook_url: str, webhook_secret: str, pr_opened_payload: dict
+) -> None:
+    """Test webhook handles pull request closed event where merged is True."""
+    pr_opened_payload["action"] = "closed"
+    pr_opened_payload["pull_request"]["state"] = "closed"
+    pr_opened_payload["pull_request"]["merged"] = True
+
+    signature = generate_signature(pr_opened_payload, webhook_secret)
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-GitHub-Event": "pull_request",
+        "X-Hub-Signature-256": signature,
+        "User-Agent": "GitHub-Hookshot/test",
+    }
+
+    with patch(
+        "src.api.handlers.webhook_event_handlers.handle_pr_merge_background"
+    ) as mock_background:
+        response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "merged, reindexing scheduled" in data["message"]
+    assert data["status"] == "merged"
+    mock_background.assert_called_once()
+
+
+def test_closed_unmerged_pr_ignored(
+    client: TestClient, webhook_url: str, webhook_secret: str, pr_opened_payload: dict
+) -> None:
+    """Test webhook handles pull request closed event where merged is False."""
+    pr_opened_payload["action"] = "closed"
+    pr_opened_payload["pull_request"]["state"] = "closed"
+    pr_opened_payload["pull_request"]["merged"] = False
+
+    signature = generate_signature(pr_opened_payload, webhook_secret)
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-GitHub-Event": "pull_request",
+        "X-Hub-Signature-256": signature,
+        "User-Agent": "GitHub-Hookshot/test",
+    }
+
+    with patch(
+        "src.api.handlers.webhook_event_handlers.handle_pr_merge_background"
+    ) as mock_background:
+        response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "closed, cleaned up" in data["message"]
+    assert data["status"] == "closed"
+    mock_background.assert_not_called()

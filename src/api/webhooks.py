@@ -6,7 +6,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from rq import Worker
 from rq.exceptions import NoSuchJobError
 from rq.job import Job
@@ -119,6 +119,7 @@ async def validate_signature(
 @router.post("/github")
 async def github_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
 ) -> Mapping[str, str | int]:
@@ -130,7 +131,7 @@ async def github_webhook(
         case "ping":
             return handle_ping_event()
         case "pull_request":
-            return handle_pull_request_event(payload)
+            return handle_pull_request_event(payload, background_tasks)
         case "pull_request_review_comment":
             return await handle_review_comment_event(payload)
         case "issue_comment":

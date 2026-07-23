@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from src.api.handlers.conversation_handler import handle_conversation_reply
@@ -29,7 +29,9 @@ def handle_ping_event() -> dict[str, str]:
 # =============================================================================
 
 
-def handle_pull_request_event(payload: dict[str, Any]) -> dict[str, str | int]:
+def handle_pull_request_event(
+    payload: dict[str, Any], background_tasks: BackgroundTasks
+) -> dict[str, str | int]:
     """Handle pull_request events (opened, reopened, synchronize, closed)."""
     action = payload.get("action")
     pr_data = payload.get("pull_request", {})
@@ -46,6 +48,16 @@ def handle_pull_request_event(payload: dict[str, Any]) -> dict[str, str | int]:
     )
 
     if action == "closed":
+        if pr_data.get("merged"):
+            # PR was merged — enqueue reindex job
+            installation_id = payload.get("installation", {}).get("id")
+            background_tasks.add_task(
+                handle_pr_merge_background, payload, installation_id
+            )
+            return {
+                "message": f"PR #{pr_number} merged, reindexing scheduled",
+                "status": "merged",
+            }
         return {"message": f"PR #{pr_number} closed, cleaned up", "status": "closed"}
 
     if pr_state != "open":
@@ -60,6 +72,18 @@ def handle_pull_request_event(payload: dict[str, Any]) -> dict[str, str | int]:
 
     logger.info("Ignoring PR %s event", action)
     return {"message": f"Event {action} ignored"}
+
+
+async def handle_pr_merge_background(
+    payload: dict[str, Any], installation_id: int | None
+) -> None:
+    """Skeleton function to handle merged PR background task for PR 1."""
+    pr_number = payload.get("pull_request", {}).get("number")
+    repo_name = payload.get("repository", {}).get("full_name")
+    logger.info(
+        f"[Skeleton] Received PR merge event for PR #{pr_number} in {repo_name} "
+        f"(installation: {installation_id})"
+    )
 
 
 def _enqueue_pr_review(

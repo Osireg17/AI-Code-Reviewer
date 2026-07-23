@@ -118,6 +118,16 @@ class Settings(BaseSettings):
         default=None, description="Redis password for RQ queue"
     )
 
+    # RabbitMQ Configuration
+    rabbitmq_url: str = Field(
+        default="amqp://guest:guest@localhost/",  # pragma: allowlist secret
+        description="RabbitMQ connection URL",
+    )
+    reindex_queue_name: str = Field(
+        default="codebase_reindex",
+        description="RabbitMQ queue name for codebase reindexing",
+    )
+
     # Pinecone Configuration
     pinecone_api_key: str | None = Field(
         default=None, description="Pinecone API key for vector database"

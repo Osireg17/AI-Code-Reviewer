@@ -21,6 +21,7 @@ dependencies = [
     "logfire[fastapi]>=0.1.0",
     "redis>=5.0.0",
     "rq>=1.16.0",
+    "aio-pika>=9.0",
     # RAG Knowledge Base
     "langchain>=0.3.0",
     "langchain-openai>=0.2.0",

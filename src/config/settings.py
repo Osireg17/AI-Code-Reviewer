@@ -119,8 +119,8 @@ class Settings(BaseSettings):
     )
 
     # RabbitMQ Configuration
-    rabbitmq_url: str = Field(
-        default="amqp://guest:guest@localhost/",  # pragma: allowlist secret
+    rabbitmq_url: str | None = Field(
+        default=None,
         description="RabbitMQ connection URL",
     )
     reindex_queue_name: str = Field(

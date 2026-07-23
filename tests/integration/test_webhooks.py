@@ -199,7 +199,7 @@ def test_merged_pr_triggers_reindex(
     }
 
     with patch(
-        "src.api.handlers.webhook_event_handlers.handle_pr_merge_background"
+        "src.api.handlers.webhook_event_handlers.handle_pr_merge"
     ) as mock_background:
         response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 
@@ -228,7 +228,7 @@ def test_closed_unmerged_pr_ignored(
     }
 
     with patch(
-        "src.api.handlers.webhook_event_handlers.handle_pr_merge_background"
+        "src.api.handlers.webhook_event_handlers.handle_pr_merge"
     ) as mock_background:
         response = client.post(webhook_url, json=pr_opened_payload, headers=headers)
 

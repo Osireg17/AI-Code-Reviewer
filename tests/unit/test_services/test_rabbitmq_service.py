@@ -114,6 +114,7 @@ async def test_publish_sends_correct_message(mock_connect, mock_settings) -> Non
         "repo_full_name": "owner/repo",
         "pr_number": 42,
         "head_sha": "abc123",
+        "installation_id": None,
     }
 
 
@@ -147,14 +148,14 @@ async def test_consume_acks_on_success(mock_connect, mock_settings) -> None:
     await service.consume_reindex_jobs(callback)
 
     callback.assert_called_once_with({"test": "data"})
-    assert mock_message.process_called_with is True
+    assert mock_message.process_called_with is False
 
 
 @pytest.mark.asyncio
 @patch("src.services.rabbitmq_service.settings")
 @patch("aio_pika.connect_robust")
 async def test_consume_nacks_on_failure(mock_connect, mock_settings) -> None:
-    """Test that exceptions during callback propagate out of the process context to trigger nack."""
+    """Test that exceptions during callback trigger requeue=False and do not propagate to crash worker."""
     mock_settings.rabbitmq_url = (
         "amqp://guest:guest@localhost/"  # pragma: allowlist secret
     )
@@ -175,11 +176,11 @@ async def test_consume_nacks_on_failure(mock_connect, mock_settings) -> None:
     callback = AsyncMock(side_effect=ValueError("Test callback failure"))
 
     service = RabbitMQService()
-    with pytest.raises(ValueError, match="Test callback failure"):
-        await service.consume_reindex_jobs(callback)
+    # The exception should be caught inside consume_reindex_jobs, not raised
+    await service.consume_reindex_jobs(callback)
 
     callback.assert_called_once_with({"test": "data"})
-    # Verify the context manager received the exception (so it can trigger nack/requeue)
+    assert mock_message.process_called_with is False
     on_exit_spy.assert_called_once()
     exc_type = on_exit_spy.call_args[0][0]
     assert issubclass(exc_type, ValueError)

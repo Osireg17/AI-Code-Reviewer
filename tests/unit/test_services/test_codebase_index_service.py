@@ -650,8 +650,7 @@ async def test_removed_file_deletes_vectors() -> None:
 
 @pytest.mark.asyncio
 @patch("src.services.codebase_index_service.settings")
-@patch("httpx.get")
-async def test_namespace_exists_returns_true_on_200(mock_get, mock_settings) -> None:
+async def test_namespace_exists_returns_true_on_200(mock_settings) -> None:
     """Test namespace_exists returns True when httpx response is 200."""
     mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
     mock_settings.pinecone_codebase_index_name = "test-index"
@@ -664,14 +663,16 @@ async def test_namespace_exists_returns_true_on_200(mock_get, mock_settings) -> 
     service.index = MagicMock()
     service.embeddings = MagicMock()
 
+    mock_client = AsyncMock()
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_get.return_value = mock_resp
+    mock_client.get.return_value = mock_resp
 
-    result = service.namespace_exists("test-namespace")
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await service.namespace_exists("test-namespace")
 
     assert result is True
-    mock_get.assert_called_once_with(
+    mock_client.get.assert_called_once_with(
         "https://test-host.pinecone.io/namespaces/test-namespace",
         headers={"Api-Key": "test-key"},  # pragma: allowlist secret
         timeout=10.0,
@@ -680,8 +681,7 @@ async def test_namespace_exists_returns_true_on_200(mock_get, mock_settings) -> 
 
 @pytest.mark.asyncio
 @patch("src.services.codebase_index_service.settings")
-@patch("httpx.get")
-async def test_namespace_exists_returns_false_on_404(mock_get, mock_settings) -> None:
+async def test_namespace_exists_returns_false_on_404(mock_settings) -> None:
     """Test namespace_exists returns False when httpx response is 404."""
     mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
     mock_settings.pinecone_codebase_index_name = "test-index"
@@ -694,20 +694,21 @@ async def test_namespace_exists_returns_false_on_404(mock_get, mock_settings) ->
     service.index = MagicMock()
     service.embeddings = MagicMock()
 
+    mock_client = AsyncMock()
     mock_resp = MagicMock()
     mock_resp.status_code = 404
-    mock_get.return_value = mock_resp
+    mock_client.get.return_value = mock_resp
 
-    result = service.namespace_exists("test-namespace")
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await service.namespace_exists("test-namespace")
 
     assert result is False
 
 
 @pytest.mark.asyncio
 @patch("src.services.codebase_index_service.settings")
-@patch("httpx.get")
 async def test_namespace_exists_returns_false_on_exception(
-    mock_get, mock_settings
+    mock_settings,
 ) -> None:
     """Test namespace_exists returns False when httpx call raises exception."""
     mock_settings.pinecone_api_key = "test-key"  # pragma: allowlist secret
@@ -721,9 +722,11 @@ async def test_namespace_exists_returns_false_on_exception(
     service.index = MagicMock()
     service.embeddings = MagicMock()
 
-    mock_get.side_effect = Exception("HTTP error")
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = Exception("HTTP error")
 
-    result = service.namespace_exists("test-namespace")
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await service.namespace_exists("test-namespace")
 
     assert result is False
 
@@ -860,3 +863,45 @@ async def test_index_full_repo_skips_on_embed_upsert_failure():
     assert len(result.files_skipped) == 1
     assert result.files_skipped[0]["file"] == "src/main.py"
     assert "failed to embed and upsert" in result.files_skipped[0]["reason"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.codebase_index_service.asyncio.sleep")
+async def test_index_full_repo_with_delay(mock_sleep):
+    """Test index_full_repo applies rate limit delay between files."""
+    service = CodebaseIndexService()
+    service.pc = MagicMock()
+    service.index = MagicMock()
+    service.embeddings = MagicMock()
+
+    repo = MagicMock()
+    repo.owner.login = "Owner"
+    repo.name = "Repo"
+
+    mock_tree = MagicMock()
+    elem1 = MagicMock()
+    elem1.type = "blob"
+    elem1.path = "src/main.py"
+    mock_tree.tree = [elem1]
+    repo.get_git_tree.return_value = mock_tree
+
+    file1 = MagicMock()
+    file1.decoded_content = b"def run():\n    pass"
+    repo.get_contents.return_value = file1
+
+    with (
+        patch.object(
+            service,
+            "_parse_functions",
+            return_value=[{"name": "run", "signature": "def run()", "calls": []}],
+        ),
+        patch.object(
+            service,
+            "_embed_and_upsert",
+            return_value=None,
+        ),
+    ):
+        result = await service.index_full_repo(repo, delay_seconds=2.5)
+
+    assert result.files_indexed == 1
+    mock_sleep.assert_called_once_with(2.5)

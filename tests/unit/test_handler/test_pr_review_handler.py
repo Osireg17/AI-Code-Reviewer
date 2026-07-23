@@ -17,7 +17,6 @@ from src.api.handlers.pr_review_handler import (
 )
 from src.models.outputs import CodeReviewResult, ReviewComment, ReviewSummary
 from src.models.review_state import ReviewState
-from src.services.codebase_index_service import IndexingResult
 
 
 @pytest.mark.asyncio
@@ -224,9 +223,7 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         mock_determine.return_value = (False, None, None)
 
         mock_index_service.is_available.return_value = True
-        mock_index_service.index_changed_files = AsyncMock(
-            return_value=IndexingResult(files_indexed=2, files_skipped=[])
-        )
+        mock_index_service.namespace_exists = AsyncMock(return_value=True)
 
         mock_agent_result = MagicMock()
         mock_agent_result.output = MagicMock()
@@ -245,13 +242,13 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         # Track call order
         call_order = []
 
-        original_index = mock_index_service.index_changed_files
+        original_exists = mock_index_service.namespace_exists
 
-        async def track_index(*args: Any, **kwargs: Any) -> Any:
-            call_order.append("index_changed_files")
-            return await original_index(*args, **kwargs)
+        async def track_exists(*args: Any, **kwargs: Any) -> Any:
+            call_order.append("namespace_exists")
+            return await original_exists(*args, **kwargs)
 
-        mock_index_service.index_changed_files = track_index
+        mock_index_service.namespace_exists = track_exists
 
         original_run = self.mock_agent.run
 
@@ -272,10 +269,10 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        self.assertIn("index_changed_files", call_order)
+        self.assertIn("namespace_exists", call_order)
         self.assertIn("agent.run", call_order)
         self.assertTrue(
-            call_order.index("index_changed_files") < call_order.index("agent.run")
+            call_order.index("namespace_exists") < call_order.index("agent.run")
         )
 
     @patch("src.api.handlers.pr_review_handler.codebase_index_service")
@@ -321,9 +318,7 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         mock_determine.return_value = (False, None, None)
 
         mock_index_service.is_available.return_value = True
-        mock_index_service.index_changed_files = AsyncMock(
-            side_effect=Exception("Indexing failed!")
-        )
+        mock_index_service.namespace_exists = AsyncMock(return_value=False)
 
         mock_agent_result = MagicMock()
         mock_agent_result.output = MagicMock()
@@ -350,7 +345,7 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        mock_index_service.index_changed_files.assert_called_once()
+        mock_index_service.namespace_exists.assert_called_once()
         self.mock_agent.run.assert_called_once()
 
     @patch("src.api.handlers.pr_review_handler.codebase_index_service")
@@ -396,7 +391,7 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
         mock_determine.return_value = (False, None, None)
 
         mock_index_service.is_available.return_value = False
-        mock_index_service.index_changed_files = AsyncMock()
+        mock_index_service.namespace_exists = AsyncMock()
 
         mock_agent_result = MagicMock()
         mock_agent_result.output = MagicMock()
@@ -424,7 +419,7 @@ class TestHandlePRReview(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         mock_index_service.is_available.assert_called_once()
-        mock_index_service.index_changed_files.assert_not_called()
+        mock_index_service.namespace_exists.assert_not_called()
         self.mock_agent.run.assert_called_once()
 
 

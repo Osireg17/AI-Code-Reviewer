@@ -25,7 +25,11 @@ class RabbitMQService:
         return bool(self.url)
 
     async def publish_reindex_job(
-        self, repo_full_name: str, pr_number: int, head_sha: str
+        self,
+        repo_full_name: str,
+        pr_number: int,
+        head_sha: str,
+        installation_id: int | None = None,
     ) -> None:
         """Publish a codebase reindexing job to RabbitMQ.
 
@@ -33,6 +37,7 @@ class RabbitMQService:
             repo_full_name: Full repository name (owner/repo)
             pr_number: Pull request number
             head_sha: Head commit SHA to reindex
+            installation_id: Optional GitHub App installation ID
         """
         if not self.is_available():
             raise RuntimeError("RabbitMQ service is not available")
@@ -41,6 +46,7 @@ class RabbitMQService:
             "repo_full_name": repo_full_name,
             "pr_number": pr_number,
             "head_sha": head_sha,
+            "installation_id": installation_id,
         }
 
         logger.info("Connecting to RabbitMQ to publish reindex job...")
@@ -86,9 +92,9 @@ class RabbitMQService:
             logger.info(f"Worker listening on queue: {self.queue_name}")
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
-                    # Use message.process(requeue=True) which acks on success and nacks (requeues) on failure
-                    async with message.process(requeue=True):
-                        try:
+                    try:
+                        # Use requeue=False to prevent infinite loop of poison messages
+                        async with message.process(requeue=False):
                             body_str = message.body.decode("utf-8")
                             message_body = json.loads(body_str)
                             logger.info(f"Processing reindex job: {message_body}")
@@ -96,9 +102,10 @@ class RabbitMQService:
                             logger.info(
                                 f"Successfully processed reindex job: {message_body}"
                             )
-                        except Exception as e:
-                            logger.error(f"Error processing message callback: {e}")
-                            raise
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing RabbitMQ reindex message (discarded): {e}"
+                        )
 
 
 rabbitmq_service = RabbitMQService()

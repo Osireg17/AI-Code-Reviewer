@@ -236,13 +236,15 @@ class CodebaseIndexService:
             "python": "(function_definition) @function",
             "javascript": """
                 (function_declaration) @function
-                (function_expression) @function
+                (function) @function
+                (arrow_function) @function
                 (generator_function_declaration) @function
                 (method_definition) @function
             """,
             "typescript": """
                 (function_declaration) @function
-                (function_expression) @function
+                (function) @function
+                (arrow_function) @function
                 (generator_function_declaration) @function
                 (method_definition) @function
             """,

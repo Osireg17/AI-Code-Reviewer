@@ -1,5 +1,6 @@
 """Codebase semantic indexing service using tree-sitter AST parsing and Pinecone."""
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -235,13 +236,15 @@ class CodebaseIndexService:
             "python": "(function_definition) @function",
             "javascript": """
                 (function_declaration) @function
-                (function_expression) @function
+                (function) @function
+                (arrow_function) @function
                 (generator_function_declaration) @function
                 (method_definition) @function
             """,
             "typescript": """
                 (function_declaration) @function
-                (function_expression) @function
+                (function) @function
+                (arrow_function) @function
                 (generator_function_declaration) @function
                 (method_definition) @function
             """,
@@ -491,7 +494,7 @@ class CodebaseIndexService:
 
         return results_list
 
-    def namespace_exists(self, namespace: str) -> bool:
+    async def namespace_exists(self, namespace: str) -> bool:
         """Check if a namespace exists in Pinecone codebase index using the namespaces REST endpoint.
 
         Args:
@@ -509,20 +512,25 @@ class CodebaseIndexService:
 
             url = f"https://{index_host}/namespaces/{namespace}"
             headers = {"Api-Key": settings.pinecone_api_key}
-            response = httpx.get(url, headers=headers, timeout=10.0)
+            async with httpx.AsyncClient() as client:  # nosec B113
+                response = await client.get(url, headers=headers, timeout=10.0)
             return response.status_code == 200
         except Exception as e:
             logger.warning(f"Error checking namespace {namespace}: {e}")
             return False
 
     async def index_full_repo(
-        self, repo: Repository, ref: str = "HEAD"
+        self,
+        repo: Repository,
+        ref: str = "HEAD",
+        delay_seconds: float = 0.0,
     ) -> IndexingResult:
         """Walk the entire repository tree at ref and index all supported files.
 
         Args:
             repo: GitHub Repository object
             ref: Git ref (commit SHA, branch, tag) to index
+            delay_seconds: Delay in seconds between indexing individual files
 
         Returns:
             IndexingResult containing counts and skipped details
@@ -544,6 +552,8 @@ class CodebaseIndexService:
         skipped_files = []
 
         for blob in blobs:
+            if delay_seconds > 0.0:
+                await asyncio.sleep(delay_seconds)
             path = blob.path
             lang = self._detect_language(path)
             if not lang:

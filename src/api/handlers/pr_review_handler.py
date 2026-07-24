@@ -80,32 +80,19 @@ async def handle_pr_review(
                 base_commit_sha=base_commit_sha,
             )
 
-            # Index changed files for semantic codebase search — runs before agent
+            # Check namespace existence and warn if the codebase index is not built
             if codebase_index_service.is_available():
-                try:
-                    indexing_result = await codebase_index_service.index_changed_files(
-                        repo, pr
-                    )
-                    logger.info(
-                        "Indexed %d files for PR #%d (%d skipped)",
-                        indexing_result.files_indexed,
-                        pr_number,
-                        len(indexing_result.files_skipped),
-                    )
-                    for skipped in indexing_result.files_skipped:
-                        logger.debug(
-                            "Skipped indexing %s: %s",
-                            skipped["file"],
-                            skipped["reason"],
-                        )
-                except Exception as e:
+                owner = pr.base.repo.owner.login.lower()
+                repo_name_lower = pr.base.repo.name.lower()
+                namespace = f"{owner}__{repo_name_lower}"
+                if not await codebase_index_service.namespace_exists(namespace):
                     logger.warning(
-                        "Codebase indexing failed for PR #%d, proceeding without it: %s",
-                        pr_number,
-                        e,
+                        "Codebase namespace %s does not exist. "
+                        "Semantic search will not return repository-wide context.",
+                        namespace,
                     )
             else:
-                logger.debug("Codebase index unavailable — skipping pre-indexing")
+                logger.debug("Codebase index unavailable — skipping namespace check")
 
             await _post_progress_comment_if_needed(pr, action)
             validated_result = await _run_code_review_agent(

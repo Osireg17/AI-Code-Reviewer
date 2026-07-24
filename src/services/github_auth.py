@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import jwt
+from github.Auth import Token as PyGithubToken
 
 from src.config.settings import settings
 
@@ -23,6 +24,7 @@ class GitHubAppAuth:
         # Token cache
         self._installation_token: str | None = None
         self._token_expires_at: datetime | None = None
+        self._tokens: dict[int, tuple[str, datetime]] = {}
 
     def _load_private_key(self) -> str:
         """Load the GitHub App private key.
@@ -98,14 +100,17 @@ class GitHubAppAuth:
             algorithm="RS256",
         )
 
-    async def get_installation_access_token(self, force_refresh: bool = False) -> str:
-        """Get an installation access token.
+    async def get_installation_access_token(
+        self, force_refresh: bool = False, installation_id: int | None = None
+    ) -> str:
+        """Get an installation access token for the GitHub App.
 
         This token is used to make API requests on behalf of the app installation.
         Tokens are cached and automatically refreshed when they expire.
 
         Args:
             force_refresh: Force generation of a new token even if cached token is valid
+            installation_id: Optional installation ID to request token for
 
         Returns:
             The installation access token
@@ -114,19 +119,19 @@ class GitHubAppAuth:
             ValueError: If installation_id is not configured
             httpx.HTTPError: If the API request fails
         """
-        if not self.installation_id:
+        inst_id = installation_id or self.installation_id
+        if not inst_id:
             raise ValueError("GitHub App installation ID not configured")
 
         # Return cached token if still valid
-        if not force_refresh and self._is_token_valid():
-            assert self._installation_token is not None
-            return self._installation_token
+        if not force_refresh and self._is_token_valid(inst_id):
+            return self._tokens[inst_id][0]
 
         # Generate new JWT
         jwt_token = self.generate_jwt()
 
         # Request installation access token
-        url = f"https://api.github.com/app/installations/{self.installation_id}/access_tokens"
+        url = f"https://api.github.com/app/installations/{inst_id}/access_tokens"
 
         headers = {
             "Accept": "application/vnd.github+json",
@@ -140,46 +145,97 @@ class GitHubAppAuth:
 
             data = response.json()
 
-            # Cache the token
-            self._installation_token = data["token"]
-
+            token = data["token"]
             # Parse expiration (ISO 8601 format)
             expires_at_str = data["expires_at"]
-            self._token_expires_at = datetime.fromisoformat(
-                expires_at_str.replace("Z", "+00:00")
-            )
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
 
-            assert self._installation_token is not None
-            return self._installation_token
+            # Cache the token in dictionary
+            self._tokens[inst_id] = (token, expires_at)
 
-    def _is_token_valid(self) -> bool:
+            # Backwards compatibility attributes
+            if inst_id == self.installation_id:
+                self._installation_token = token
+                self._token_expires_at = expires_at
+
+            return token
+
+    def get_installation_access_token_sync(
+        self, force_refresh: bool = False, installation_id: int | None = None
+    ) -> str:
+        """Synchronously get an installation access token for the GitHub App.
+
+        Useful for synchronous contexts (e.g. PyGithub) where running async calls is blocked.
+        """
+        inst_id = installation_id or self.installation_id
+        if not inst_id:
+            raise ValueError("GitHub App installation ID not configured")
+
+        # Return cached token if still valid
+        if not force_refresh and self._is_token_valid(inst_id):
+            return self._tokens[inst_id][0]
+
+        # Generate new JWT
+        jwt_token = self.generate_jwt()
+
+        # Request installation access token
+        url = f"https://api.github.com/app/installations/{inst_id}/access_tokens"
+
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {jwt_token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(url, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+
+            token = data["token"]
+            expires_at_str = data["expires_at"]
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+
+            # Cache the token in dictionary
+            self._tokens[inst_id] = (token, expires_at)
+
+            # Backwards compatibility attributes
+            if inst_id == self.installation_id:
+                self._installation_token = token
+                self._token_expires_at = expires_at
+
+            return token
+
+    def _is_token_valid(self, installation_id: int | None = None) -> bool:
         """Check if the cached installation token is still valid.
 
         Returns:
             True if token exists and hasn't expired (with 5 minute buffer)
         """
-        if not self._installation_token or not self._token_expires_at:
+        inst_id = installation_id or self.installation_id
+        if not inst_id or inst_id not in self._tokens:
             return False
+
+        token, expires_at = self._tokens[inst_id]
 
         # Add 5 minute buffer before expiration
         buffer = timedelta(minutes=5)
         now = datetime.now(timezone.utc)
 
-        return now < (self._token_expires_at - buffer)
+        return now < (expires_at - buffer)
 
-    async def get_authenticated_client(self) -> httpx.AsyncClient:
+    async def get_authenticated_client(
+        self, installation_id: int | None = None
+    ) -> httpx.AsyncClient:
         """Get an authenticated HTTP client for GitHub API requests.
 
         Returns:
             An async HTTP client with authentication headers set
-
-        Example:
-            async with auth.get_authenticated_client() as client:
-                response = await client.get(
-                    "https://api.github.com/repos/owner/repo/pulls/1"
-                )
         """
-        token = await self.get_installation_access_token()
+        token = await self.get_installation_access_token(
+            installation_id=installation_id
+        )
 
         headers = {
             "Accept": "application/vnd.github+json",
@@ -274,3 +330,23 @@ class _GitHubAppAuthProxy:
 
 
 github_app_auth = _GitHubAppAuthProxy()
+
+
+class RefreshingAppAuth(PyGithubToken):
+    """PyGithub Auth provider that automatically refreshes the installation access token."""
+
+    def __init__(self, installation_id: int | None = None) -> None:
+        auth_service = get_github_app_auth()
+        initial_token = auth_service.get_installation_access_token_sync(
+            installation_id=installation_id
+        )
+        super().__init__(initial_token)
+        self.installation_id = installation_id
+
+    @property
+    def token(self) -> str:
+        """Get a valid installation access token, refreshing if expired."""
+        auth_service = get_github_app_auth()
+        return auth_service.get_installation_access_token_sync(
+            installation_id=self.installation_id
+        )

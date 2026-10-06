@@ -38,6 +38,9 @@ async def test_process_pr_review_runs_and_closes_session(monkeypatch):
     class FakePR:
         number = 1
         state = "open"
+        base = SimpleNamespace(
+            repo=SimpleNamespace(owner=SimpleNamespace(login="acme"), name="widgets")
+        )
 
     class FakeRepo:
         def get_pull(self, pr_number: int):
@@ -89,6 +92,9 @@ async def test_process_pr_review_runs_and_closes_session(monkeypatch):
         pr_review_handler, "_post_summary_review_if_needed", AsyncMock()
     )
     monkeypatch.setattr(pr_review_handler, "_update_review_state", AsyncMock())
+    monkeypatch.setattr(
+        pr_review_handler.codebase_index_service, "is_available", lambda: False
+    )
 
     await pr_review_handler.handle_pr_review(
         "acme/widgets",

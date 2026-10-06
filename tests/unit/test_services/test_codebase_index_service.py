@@ -156,10 +156,11 @@ def test_parse_functions_load_language_error(mock_get_language):
 
 
 @pytest.mark.asyncio
-async def test_embed_and_upsert_raises_when_clients_none():
+@patch("src.services.codebase_index_service.settings")
+async def test_embed_and_upsert_raises_when_clients_none(mock_settings):
     """Test _embed_and_upsert raises RuntimeError when index or embeddings clients are None."""
+    mock_settings.pinecone_api_key = None
     service = CodebaseIndexService()
-    # Clients are None by default (no API key in test env)
     with pytest.raises(
         RuntimeError, match="Codebase index service components are not initialized"
     ):
@@ -664,6 +665,7 @@ async def test_namespace_exists_returns_true_on_200(mock_settings) -> None:
     service.embeddings = MagicMock()
 
     mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_client.get.return_value = mock_resp

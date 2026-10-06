@@ -18,7 +18,11 @@ class GitHubAppAuth:
     def __init__(self) -> None:
         """Initialize GitHub App authentication."""
         self.app_id = settings.github_app_id
-        self.installation_id = settings.github_app_installation_id
+        self.installation_id: int | None = (
+            int(settings.github_app_installation_id)
+            if settings.github_app_installation_id
+            else None
+        )
         self.private_key = self._load_private_key()
 
         # Token cache
@@ -145,7 +149,7 @@ class GitHubAppAuth:
 
             data = response.json()
 
-            token = data["token"]
+            token: str = data["token"]
             # Parse expiration (ISO 8601 format)
             expires_at_str = data["expires_at"]
             expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
@@ -193,7 +197,7 @@ class GitHubAppAuth:
 
             data = response.json()
 
-            token = data["token"]
+            token: str = data["token"]
             expires_at_str = data["expires_at"]
             expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
 

@@ -1,6 +1,6 @@
 """Unit tests for handle_pr_merge handler."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,6 +12,7 @@ from src.api.handlers.pr_merge_handler import handle_pr_merge
 async def test_handle_pr_merge_success(mock_rabbitmq) -> None:
     """Test handle_pr_merge successfully publishes a reindex job."""
     mock_rabbitmq.is_available.return_value = True
+    mock_rabbitmq.publish_reindex_job = AsyncMock()
 
     payload = {
         "pull_request": {
@@ -26,7 +27,7 @@ async def test_handle_pr_merge_success(mock_rabbitmq) -> None:
     await handle_pr_merge(payload, installation_id=123)
 
     mock_rabbitmq.publish_reindex_job.assert_called_once_with(
-        "owner/repo", 42, "headsha123"
+        "owner/repo", 42, "headsha123", 123
     )
 
 
@@ -77,7 +78,9 @@ async def test_handle_pr_merge_rabbitmq_unavailable(mock_rabbitmq) -> None:
 async def test_handle_pr_merge_publish_exception(mock_rabbitmq) -> None:
     """Test handle_pr_merge handles exceptions during publishing gracefully."""
     mock_rabbitmq.is_available.return_value = True
-    mock_rabbitmq.publish_reindex_job.side_effect = Exception("Publish error")
+    mock_rabbitmq.publish_reindex_job = AsyncMock(
+        side_effect=Exception("Publish error")
+    )
 
     payload = {
         "pull_request": {
@@ -93,5 +96,5 @@ async def test_handle_pr_merge_publish_exception(mock_rabbitmq) -> None:
     await handle_pr_merge(payload, installation_id=123)
 
     mock_rabbitmq.publish_reindex_job.assert_called_once_with(
-        "owner/repo", 42, "headsha123"
+        "owner/repo", 42, "headsha123", 123
     )

@@ -220,8 +220,10 @@ class TestInstallationToken:
         auth = GitHubAppAuth()
 
         # Set a valid cached token
-        auth._installation_token = "cached_token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "cached_token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
         # Should return cached token without making API call
         token = await auth.get_installation_access_token()
@@ -235,8 +237,10 @@ class TestInstallationToken:
         auth = GitHubAppAuth()
 
         # Set a valid cached token
-        auth._installation_token = "cached_token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "cached_token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
         # Mock the HTTP client
         mock_response = MagicMock()
@@ -285,25 +289,30 @@ class TestTokenValidation:
         """Test that valid token returns True."""
         auth = GitHubAppAuth()
 
-        auth._installation_token = "token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
         assert auth._is_token_valid()
 
     def test_is_token_valid_expired_token(self, mock_settings_with_content):
         """Test that expired token returns False."""
         auth = GitHubAppAuth()
 
-        auth._installation_token = "token"
-        auth._token_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        auth._tokens[auth.installation_id] = (
+            "token",
+            datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
         assert not auth._is_token_valid()
 
     def test_is_token_valid_expiring_soon(self, mock_settings_with_content):
         """Test that token expiring within buffer returns False."""
         auth = GitHubAppAuth()
 
-        auth._installation_token = "token"
-        # Token expires in 3 minutes (within 5 minute buffer)
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=3)
+        auth._tokens[auth.installation_id] = (
+            "token",
+            datetime.now(timezone.utc) + timedelta(minutes=3),
+        )
         assert not auth._is_token_valid()
 
 
@@ -316,8 +325,10 @@ class TestAuthenticatedClient:
         auth = GitHubAppAuth()
 
         # Mock the token
-        auth._installation_token = "test_token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "test_token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
         client = await auth.get_authenticated_client()
 
@@ -335,8 +346,10 @@ class TestPRReview:
         auth = GitHubAppAuth()
 
         # Mock the token
-        auth._installation_token = "test_token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "test_token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
         # Mock the HTTP client
         mock_response = MagicMock()
@@ -371,8 +384,10 @@ class TestPRReview:
         auth = GitHubAppAuth()
 
         # Mock the token
-        auth._installation_token = "test_token"
-        auth._token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        auth._tokens[auth.installation_id] = (
+            "test_token",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
         # Mock the HTTP client
         mock_response = MagicMock()

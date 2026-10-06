@@ -5,6 +5,7 @@ import os
 from typing import cast
 
 from pydantic_ai import Agent, RunContext, WebSearchTool
+from pydantic_ai.capabilities import NativeTool
 from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from src.config.settings import settings
@@ -35,7 +36,7 @@ code_review_agent = Agent(
     output_type=CodeReviewResult,
     instructions=SYSTEM_PROMPT,
     retries=settings.max_retries,
-    builtin_tools=[WebSearchTool()],
+    capabilities=[NativeTool(WebSearchTool())],
 )
 
 
